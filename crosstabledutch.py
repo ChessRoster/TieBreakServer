@@ -158,7 +158,6 @@ class crosstable_dutch(crosstable):
         if update_maxpsd:
             maxpsd = max([node["scorelevel"] for node in nodes]) - scorelevel
             self.maxpsd = nodes[0]["scorelevel"] - scorelevel
-            if maxpsd != self.maxpsd: breakpoint()
             self.mdp = [0] * self.maxpsd
             for node in nodes:
                 psd = node["scorelevel"] - scorelevel
@@ -618,7 +617,7 @@ class crosstable_dutch(crosstable):
         elif mode == "BI":
                 weight = c["qcweight"] * self.weight[B0] + c["biweight"]
         else:
-            breakpoint()
+            raise ValueError("unknown weight mode " + str(mode))
         c["mode"] = mode
         c["levels"] = category
         c["weight"] = weight

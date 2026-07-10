@@ -311,7 +311,7 @@ class pairing_dutch(pairing):
         if scorelevel == testlevel:
             breakpoint()
         if len(edges) == 0:
-            raise  
+            raise ValueError("score bracket " + str(scorelevel) + " has no admissible pairing")
         if edges[0]["sa"] < scorelevel or edges[0]["sb"] < scorelevel:
             return -1  # There are no pairing for this scorebracket
         if edges[0]["sa"] == 1 and edges[0]["sb"] == 1:

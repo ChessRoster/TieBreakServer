@@ -213,8 +213,9 @@ class pairing:
                 self.roundpairing.append(bracket)
             scorelevel -= 1
         if len(nodes) > 0:
-            breakpoint()
-            raise            
+            raise ValueError(
+                str(len(nodes)) + " competitor(s) could not be paired (no legal pairing exists)"
+            )
         if pabbracket:
             self.roundpairing.append(pabbracket)
         self.update_board(self.roundpairing)

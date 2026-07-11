@@ -18,6 +18,7 @@ import networkx as nx
 
 # from networkx.algorithms import bipartite
 from crosstable import crosstable, flt
+from errors import GacruxNoLegalPairing
 import helpers
 
 
@@ -213,8 +214,9 @@ class pairing:
                 self.roundpairing.append(bracket)
             scorelevel -= 1
         if len(nodes) > 0:
-            raise ValueError(
-                str(len(nodes)) + " competitor(s) could not be paired (no legal pairing exists)"
+            raise GacruxNoLegalPairing(
+                str(len(nodes)) + " competitor(s) remain after every score bracket has been paired"
+                + " (no legal pairing of the whole field exists, see C.04.3 art. 1.9.3)"
             )
         if pabbracket:
             self.roundpairing.append(pabbracket)

@@ -12,6 +12,7 @@ opponents - Two-dimentional array of size [0..P+1][0..P+1] of opponent objects
 
 from decimal import Decimal
 from crosstable import crosstable, flt
+from errors import GacruxInvariantError
 from tiebreak import tiebreak
 from itertools import combinations  
 from enum import Enum
@@ -158,6 +159,13 @@ class crosstable_dutch(crosstable):
         if update_maxpsd:
             maxpsd = max([node["scorelevel"] for node in nodes]) - scorelevel
             self.maxpsd = nodes[0]["scorelevel"] - scorelevel
+            if maxpsd != self.maxpsd:
+                raise GacruxInvariantError(
+                    "score bracket " + str(scorelevel) + ": the competitors are not ordered by score."
+                    + " The highest score difference in the bracket is " + str(maxpsd) + ", but the first"
+                    + " competitor has " + str(self.maxpsd) + ". mdp and the C-weights are indexed on the"
+                    + " assumption that the first competitor is the highest one"
+                )
             self.mdp = [0] * self.maxpsd
             for node in nodes:
                 psd = node["scorelevel"] - scorelevel
@@ -470,7 +478,10 @@ class crosstable_dutch(crosstable):
                 for eval in range(len(weight[nval])-1, -1, -1):
                     (w, weight[nval][eval], depth[nval][eval]) = (w*depth[nval][eval], w, len(str(weight[nval][eval])))
             else:
-                raise
+                raise GacruxInvariantError(
+                    "criterion " + str(nval) + " has a depth of type " + type(depth[nval]).__name__
+                    + ", but a weight can only be cascaded over an int or a list of int"
+                )
         # print("Weights", let[start], self.weight[acc[start]], self.weight[start:stop+1])
         return w
 
@@ -617,7 +628,7 @@ class crosstable_dutch(crosstable):
         elif mode == "BI":
                 weight = c["qcweight"] * self.weight[B0] + c["biweight"]
         else:
-            raise ValueError("unknown weight mode " + str(mode))
+            raise GacruxInvariantError("unknown weight mode " + str(mode))
         c["mode"] = mode
         c["levels"] = category
         c["weight"] = weight

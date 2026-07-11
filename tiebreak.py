@@ -8,6 +8,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 import chessjson as chessjson
 import rating as rating
+from errors import GacruxInputError
 
 """
 Structure
@@ -397,7 +398,7 @@ class tiebreak:
         if black > 0:
             if "bResult" not in rst:
                 err = "No result for black in round " +  str(rst.get("round", 0)) + ", white=" +  str(rst.get("white", 0)) + ", black=" +  str(rst.get("black", 0))
-                raise ValueError(err)
+                raise GacruxInputError(err)
             bPoints = self.get_score(scoresystem, rst, "black")
             brPoints = self.get_score(self.rating, rst, "black")
             bVur = self.is_vur(rst, "black")

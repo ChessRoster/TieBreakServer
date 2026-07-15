@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  # Cancel a superseded pull-request run when new commits arrive, but leave a
+  # manually dispatched run alone so it is never cut short.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The lowest and highest interpreter the engine supports.
+        python-version: ["3.11", "3.14"]
+        # The whole corpus runs in CI. Checking a tournament is real pairing work,
+        # so it is split across shards -- each a separate runner doing an eighth of
+        # the corpus -- and xdist then spreads that shard over the runner's cores.
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run tests
+        env:
+          TIEBREAK_CORPUS_FULL: "1"
+          TIEBREAK_CORPUS_SHARDS: "8"
+          TIEBREAK_CORPUS_SHARD: ${{ matrix.shard }}
+        run: pytest tests/ -n auto

@@ -36,7 +36,7 @@ def player_line(startno, name, rating, points, games):
     return line + "  ".join(["%4d %s %s" % game for game in games])
 
 
-def team_line(cid, name, players):
+def team_line(cid, name, players, matchpoints="0.0", gamepoints="0.0"):
     # Record 310, written at the columns TRF-2026 gives it:
     #     1 - 3    record identifier 310
     #     5 - 7    team pairing number
@@ -47,6 +47,8 @@ def team_line(cid, name, players):
     line[0:3] = "310"
     line[4:7] = "%3d" % cid
     line[8 : 8 + len(name)] = name
+    line[54:60] = "%6s" % matchpoints
+    line[61:67] = "%6s" % gamepoints
     line[68:71] = "%3d" % cid
     return "".join(line) + " ".join(["%4d" % player for player in players])
 
@@ -68,10 +70,10 @@ def teams(records, first=1):
     # the first player; the players are numbered consecutively from it.
     p = lambda n: n + first - 1  # noqa: E731
     lines = ["012 Pairing numbers, teams", "042 2026-03-01", "XXR 3", "352 WB"]
-    lines.append(team_line(1, "Team One", [p(1), p(2)]))
-    lines.append(team_line(2, "Team Two", [p(3), p(4)]))
-    lines.append(team_line(3, "Team Three", [p(5), p(6)]))
-    lines.append(team_line(4, "Team Four", [p(7), p(8)]))
+    lines.append(team_line(1, "Team One", [p(1), p(2)], "2.0", "2.5"))
+    lines.append(team_line(2, "Team Two", [p(3), p(4)], "2.0", "2.0"))
+    lines.append(team_line(3, "Team Three", [p(5), p(6)], "0.0", "0.5"))
+    lines.append(team_line(4, "Team Four", [p(7), p(8)], "4.0", "3.0"))
     lines.append(player_line(p(1), "One, Player", 2400, "1.5", [(p(5), "w", "1"), (p(7), "w", "=")]))
     lines.append(player_line(p(2), "Two, Player", 2300, "1.0", [(p(6), "b", "1"), (p(8), "b", "0")]))
     lines.append(player_line(p(3), "Three, Player", 2200, "0.5", [(p(7), "b", "0"), (p(5), "b", "=")]))
@@ -117,6 +119,21 @@ def test_240_names_a_team_in_a_team_tournament():
 
     byes = [match for match in matchList if match["round"] == 3]
     assert [(match["white"], match["black"], match["wResult"]) for match in byes] == [(3, 0, "D")]
+
+
+@pytest.mark.parametrize(
+    "code, model",
+    [
+        ("FIDE_TEAM_TYPEA_MP_GP", "team_typea"),
+        ("FIDE_TEAM_TYPEB_MP_GP", "team_typeb"),
+        ("FIDE_TEAM_MP_GP", "nocolor"),
+        ("FIDE_TEAM_BAKU", "team_typea"),
+    ],
+)
+def test_record_192_selects_the_declared_team_colour_model(code, model):
+    tournament = parse(teams(["192 " + code])).get_tournament(1)
+
+    assert model in tournament["pairingSystem"]
 
 
 def test_240_in_a_team_tournament_does_not_accept_a_player_number():

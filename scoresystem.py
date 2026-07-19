@@ -292,16 +292,3 @@ class scoresystem:
             points = self.get_score(tournament, scorename, points)
         # print(scorename, scoretype, points)
         return points
-
-    def get_result(self, tournament, scoresystem, points):
-        score = tournament.get("scoresystem", {}).get(scoresystem, {})
-
-        if points == score.get("W", helpers.parse_float("1.0")):
-            return "W"
-        if points == score.get("D", helpers.parse_float("0.5")):
-            return "D"
-        if points == score.get("Z", helpers.parse_float("0.0")):
-            return "Z"
-        if points == score.get("L", helpers.parse_float("0.0")):
-            return "L"
-        return "Z"

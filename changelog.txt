@@ -12,6 +12,10 @@ Rewritten direct encounter, so all DE od EDE.. TBs are treated in the same funct
 
 Unreleased
 
+- Added the FIDE Swiss Team Pairing System (C.04.6), including type A and type B
+  colour preferences, automatic TRF selection, and team-corpus coverage.
+- Enabled all 300 previously skipped team records, so every record in the
+  6,000-record corpus now executes in CI.
 - Corrected Sonneborn-Berger cut modifiers to select a voluntary unplayed
   round by its contribution, and to break a tie between equal contributions
   by the opponent's score, as required by FIDE C.07 article 16.5. Affects

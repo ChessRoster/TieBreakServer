@@ -12,6 +12,8 @@ Rewritten direct encounter, so all DE od EDE.. TBs are treated in the same funct
 
 Unreleased
 
+- Corrected Sonneborn-Berger cut modifiers to select a voluntary unplayed
+  round by its contribution, as required by FIDE C.07 article 16.5.
 - Fixed absolute colour preferences when the colour difference is +/-1 and the
   player received the same colour in their last two played games.
 - The COP tie-break lists the colour preference of C.04.3 article 1.7 exactly

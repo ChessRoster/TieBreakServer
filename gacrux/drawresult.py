@@ -108,9 +108,9 @@ class drawresult:
 # run program
 if __name__ == '__main__':
     import sys
-    import version   
+    from gacrux import version
     import argparse
-    import helpers
+    from gacrux import helpers
     
     def read_command_line(version, strict):
         parser = argparse.ArgumentParser()

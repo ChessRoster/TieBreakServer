@@ -274,11 +274,16 @@ class trf2json(chessjson.chessjson):
                         # says so. Do not turn that into a status code and a return: the
                         # return leaves all_lines unset, and parse_file then reads it.
                         raise
-                    except:
+                    except Exception as exc:
                         if verbose:
                             raise
-                        self.put_status(401, "Error in trf-file, line " + str(lineno) + ", " + line)
-                        return
+                        # A parser that did not see the fault coming. The status code says
+                        # which record it was, and the exception carries it out of here --
+                        # returning would hand parse_file a None it goes on to subscript,
+                        # and the record this knows about is lost on the way.
+                        message = "Error in trf-file, line " + str(lineno) + ", " + line
+                        self.put_status(401, message)
+                        raise GacruxInputError(message) from exc
             nexttrfid = self.post_parse_line(tournament, trfid)
         if "001" not in all_lines and "092" not in all_lines:
             self.put_status(401, "Error in trf, no 001 records")

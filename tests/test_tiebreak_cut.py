@@ -14,6 +14,7 @@ import tiebreak
 import trf2json
 
 PAB = (0, "-", "U")  # pairing-allocated bye
+HPB = (0, "-", "H")  # half-point bye
 ZPB = (0, "-", "Z")  # zero-point bye
 
 
@@ -56,14 +57,28 @@ def withdrawal_after_round_1():
     return lines
 
 
-def compute(lines, tiebreaks):
+def run(lines, tiebreaks, check=False, swiss=False):
+    # swiss picks the unplayed-round rules of article 16 over the pre-determined pairing
+    # rules, the way -s does on the command line.
     chessfile = trf2json.trf2json()
     chessfile.parse_file("\n".join(lines), True)
     tournament = chessfile.get_tournament(1)
-    params = {"tiebreak": tiebreaks, "check": False, "unrated": None, "pre_determined": True}
+    params = {"tiebreak": tiebreaks, "check": check, "unrated": None,
+              "pre_determined": not swiss, "swiss": swiss}
     tb = tiebreak.tiebreak(tournament, -1, params)
-    result = tb.compute_tiebreaks(tournament, params)
+    return tb.compute_tiebreaks(tournament, params)
+
+
+def compute(lines, tiebreaks, swiss=False):
+    result = run(lines, tiebreaks, swiss=swiss)
     return dict([(cmp["cid"], str(cmp["tiebreakScore"][0])) for cmp in result["competitors"]])
+
+
+def cut_rounds(lines, tiebreakname, startno, swiss=False):
+    # The rounds a single cut modifier dropped, in the order it dropped them.
+    result = run(lines, [tiebreakname], True, swiss=swiss)
+    competitor = [cmp for cmp in result["competitors"] if cmp["cid"] == startno][0]
+    return competitor["tiebreakDetails"][0]["cut"]
 
 
 def test_buchholz_of_the_field():
@@ -166,3 +181,87 @@ def test_cut_inside_the_number_of_games_is_unchanged():
         4: "7.5",    # 4.5 + 3.0           (2.5 dropped)
         5: "0",      # his one game dropped
     }
+
+
+def swiss_with_absences(round3):
+    # Swiss, five players, four rounds, dated into the March 2026 regulations. Player 2
+    # takes a half-point bye in round 2 and plays his round 3 as round3 says: "-" is a
+    # forfeit loss and gives him a second VUR (art. 16.1.2), "0" is an ordinary loss and
+    # leaves him with one. Nothing else changes, every score included.
+    #
+    # Art. 16.4 caps the two VURs differently - the bye at the points for a draw times
+    # the number of rounds, 0.5 * 4 = 2.0 (art. 16.4.2), the forfeit at the scheduled
+    # opponent's adjusted score, 4.0, which leaves player 2's own 2.5 (art. 16.4.1). So
+    # the bye is the VUR against the lower-scoring dummy while the forfeit is the VUR
+    # with the lower contribution, and the two candidates come apart.
+    #
+    # Player 2's four elements, as opponent score x own result:
+    #     round 1  0.5 x 1.0 = 0.50   played, opponent 5 scored 0.5
+    #     round 2  2.0 x 0.5 = 1.00   VUR, half-point bye
+    #     round 3  2.5 x 0.0 = 0.00   VUR when forfeited, opponent 1 scored 4.0 when not
+    #     round 4  1.5 x 1.0 = 1.50   played, opponent 4 scored 1.5
+    forfeited = round3 == "-"
+    lines = ["012 Sonneborn-Berger cut with a requested absence", "022 Oslo", "032 NOR",
+             "042 2026-03-01", "052 2026-03-04", "062 5", "072 0", "092 Swiss System",
+             "XXR 4"]
+    lines.append(player_line(1, "Winner, Wanda", 2400, "4.0",
+                             [(4, "w", "1"), (3, "b", "1"),
+                              (2, "w", "+" if forfeited else "1"), (5, "b", "1")]))
+    lines.append(player_line(2, "Cutcase, Cato", 2300, "2.5",
+                             [(5, "w", "1"), HPB, (1, "b", round3), (4, "w", "1")]))
+    lines.append(player_line(3, "Middle, Mons", 2200, "2.0",
+                             [PAB, (1, "w", "0"), (5, "w", "1"), ZPB]))
+    lines.append(player_line(4, "Lower, Lars", 2100, "1.5",
+                             [(1, "b", "0"), (5, "b", "="), PAB, (2, "b", "0")]))
+    lines.append(player_line(5, "Tailend, Tor", 2000, "0.5",
+                             [(2, "b", "0"), (4, "w", "="), (3, "b", "0"), (1, "w", "0")]))
+    return lines
+
+
+def two_requested_absences():
+    return swiss_with_absences("-")
+
+
+def one_requested_absence():
+    return swiss_with_absences("0")
+
+
+def test_art_16_5_1_selects_the_vur_by_contribution_not_by_opponent_score():
+    # Art. 16.5.1: "When a modifier calls for cutting the least significant value (see
+    # Articles 14.1 to 14.4) of a participant with one or more VURs, the lowest
+    # contribution coming from such rounds shall be cut, as long as such contribution is
+    # not lower than the least significant value." The handbook spells the comparison
+    # out for Sonneborn-Berger: determine the lowest contribution coming from a VUR and
+    # the least significant value (art. 14.1.1.d), then "cut the higher of these two
+    # values".
+    #
+    # For player 2 the lowest contribution coming from a VUR is round 3's 0.00, not
+    # round 2's 1.00: art. 16.5.1 ranks the VURs by contribution, and the lower dummy
+    # score behind round 2 does not make it the candidate. The least significant value
+    # is round 1's 0.50, the contribution against the lowest-scoring opponent. The
+    # higher of 0.00 and 0.50 is 0.50, so round 1 is cut and 2.50 is left.
+    assert compute(two_requested_absences(), ["SB"], swiss=True)[2] == "3.00"
+    assert compute(two_requested_absences(), ["SB/C1"], swiss=True)[2] == "2.50"
+    assert cut_rounds(two_requested_absences(), "SB/C1", 2, swiss=True) == [1]
+
+
+def test_art_16_5_2_reapplies_the_exception_to_the_remaining_elements():
+    # Art. 16.5.2: "Rule 16.5.1 applies again to the remaining elements when the
+    # modifier requires more cuts." Rounds 2, 3 and 4 remain after the first cut. The
+    # lowest contribution coming from a VUR is still round 3's 0.00; the least
+    # significant value is now round 4's 1.50, against the lowest-scoring opponent left.
+    # The higher of the two is 1.50, so round 4 goes and 1.00 is left.
+    assert compute(two_requested_absences(), ["SB/C2"], swiss=True)[2] == "1.00"
+    assert cut_rounds(two_requested_absences(), "SB/C2", 2, swiss=True) == [1, 4]
+
+
+def test_art_16_5_1_leaves_a_single_vur_cut_alone():
+    # With one VUR there is nothing to rank, so the exception behaves as it always has.
+    # The only contribution coming from a VUR is round 2's 1.00 and the least
+    # significant value is round 1's 0.50; the higher is 1.00, so the VUR is cut. The
+    # second cut has no VUR left and falls back to art. 14.1.1.d alone, taking round 1.
+    assert compute(one_requested_absence(), ["SB"], swiss=True)[2] == "3.00"
+    assert compute(one_requested_absence(), ["SB/C1"], swiss=True)[2] == "2.00"
+    assert compute(one_requested_absence(), ["SB/C2"], swiss=True)[2] == "1.50"
+    assert cut_rounds(one_requested_absence(), "SB/C1", 2, swiss=True) == [2]
+    assert cut_rounds(one_requested_absence(), "SB/C2", 2, swiss=True) == [2, 1]

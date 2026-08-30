@@ -59,8 +59,32 @@ Unreleased
   The suite also runs on every push to main.
 - Removed reachable debug breakpoints from the pairing engine and replaced
   invariant checks with explicit errors.
-- Fixed parsing of TRF26 record 299 abnormal assignments. The records are now
-  retained; applying their point adjustments remains future work.
+- Fixed parsing of TRF26 record 299 abnormal assignments. A record with no round
+  and no pairing numbers states what an abnormal result is worth for the whole
+  tournament and is applied as before. Applying an assignment scoped to a round
+  or to a competitor remains future work, so a file whose scoped assignment would
+  change a result the engine reports is now rejected, with a message naming the
+  record, the scope and the two point values, instead of being accepted and then
+  scored by rules other than the ones it asked for. A scoped assignment that
+  cannot change anything - because no recorded result matches the one it names,
+  or because it agrees with the score system already in force - is read and
+  accepted as before. A record 299 with a blank type - TRF26's "penalty/bonus
+  points (may be negative)", which modify the points in the standings - is
+  refused when it carries points, scoped or not, with a message naming the
+  record, the scope and the points, because the engine does not yet apply a
+  standings adjustment; such a file used to be read with status 0 and ranked
+  without it. A blank-type record of 0.0 is accepted and inert, and neither form
+  reaches the score system any more. A scoped record 299 for a team is checked
+  on its game points as well as its match points.
+- Corrected the TRF26 record 310 team-total check. The rounds it counts are read
+  off the match list, so a last round decided entirely by forfeit is counted and a
+  bye announced for a round that has not been played is not. A file that really
+  does disagree with its own results is still rejected, and the message now names
+  the team, the rounds counted, and the declared and calculated figures.
+- Fixed a KeyError on a game recorded from only one side, such as a
+  pairing-allocated bye whose opponent never recorded the same game.
+- A TRF record the reader cannot parse is again reported as "Error in trf-file,
+  line N" instead of failing later with a TypeError.
 - Corrected the documented minimum Python version to 3.11.
 
 2026-07-10 1.9.56

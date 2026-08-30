@@ -29,6 +29,10 @@ GOLDEN_BEFORE = os.path.join(_FIXTURES, "swiss_with_many_unplayed_rounds.2026-02
 GOLDEN_ON = os.path.join(_FIXTURES, "swiss_with_many_unplayed_rounds.2026-03-01.txt")
 GOLDEN_ON_UPSTREAM = os.path.join(
     _FIXTURES, "swiss_with_many_unplayed_rounds.2026-03-01.upstream.txt")
+GOLDEN_ALL_BEFORE = os.path.join(
+    _FIXTURES, "swiss_with_many_unplayed_rounds.2026-02-28.all.txt")
+GOLDEN_ALL_ON = os.path.join(
+    _FIXTURES, "swiss_with_many_unplayed_rounds.2026-03-01.all.txt")
 
 
 def player_line(startno, name, rating, points, games):
@@ -446,6 +450,50 @@ def test_art_16_5_1_ties_among_equal_vur_contributions_go_to_the_lowest_opponent
     # art. 16.5.1 does not apply and the ordinary candidate is cut: 6.00 - 1.00 = 5.00.
     # Cutting round 1 first instead leaves round 2 in the pool and takes another 0.00.
     assert compute(real_swiss("2026-03-01"), ["SB/C2"], swiss=True)[4] == "5.00"
+
+
+# Every family of tie-break the engine computes for an individual tournament. The two
+# goldens below hold the whole lot against this one real pairing history, so a change
+# anywhere in the tie-break code has to be acknowledged, not only a change in the cuts.
+ALL_TIEBREAKS = [
+    "PTS", "WIN", "WON", "BWG", "BPG", "VUR", "NUM", "DE", "PS", "PS/C1", "KS",
+    "BH", "BH/C1", "BH/C2", "BH/M1", "BH/M2", "ABH", "AOB", "FB",
+    "SB", "SB/C1", "SB/C2", "SB/M1", "SB/M2", "ESB",
+    "ARO", "ARO/C1", "TPR", "PTP", "APRO", "COP", "CSQ",
+]
+
+
+def test_a_real_swiss_across_every_tiebreak_the_day_before():
+    assert checker_output(real_swiss(), ALL_TIEBREAKS) == golden(GOLDEN_ALL_BEFORE)
+
+
+def test_a_real_swiss_across_every_tiebreak_on_the_day():
+    assert checker_output(real_swiss("2026-03-01"), ALL_TIEBREAKS) == golden(GOLDEN_ALL_ON)
+
+
+def test_the_2026_rules_move_more_than_the_cuts():
+    # Which tie-breaks the March 2026 rules actually disturb on this tournament. The
+    # unplayed-round rules of article 16 reach everything derived from an opponent's
+    # score, so the plain Buchholz and Sonneborn-Berger move too, not only the cuts.
+    before = golden(GOLDEN_ALL_BEFORE).rstrip("\n").split("\n")
+    on = golden(GOLDEN_ALL_ON).rstrip("\n").split("\n")
+    header = before[0].split("\t")
+    assert header == on[0].split("\t")
+    moved = set()
+    for lrow, rrow in zip(before[1:], on[1:]):
+        left, right = lrow.split("\t"), rrow.split("\t")
+        if len(left) != len(header):
+            continue                      # the trailing Check line
+        for name, a, b in zip(header, left, right):
+            if a != b:
+                moved.add(name)
+    assert moved == {"BH", "BH/C1", "BH/C2", "BH/M1", "BH/M2", "AOB", "FB",
+                     "SB", "SB/C1", "SB/C2", "SB/M1", "SB/M2", "ESB"}
+    # ABH does not move: it is the competitor's own adjusted score, which article 16.3
+    # governs, while the caps of article 16.4 only bound the dummy opponent's score.
+    # Nor does Rank: with this many tie-breaks the order is settled long before the
+    # Buchholz family is reached, which is why the four-tie-break golden above does see
+    # the ranks shift and this one does not.
 
 
 def buchholz_after_round(startno, currentround):

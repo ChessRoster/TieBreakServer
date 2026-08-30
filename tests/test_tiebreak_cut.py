@@ -27,8 +27,6 @@ _FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 REAL_SWISS = os.path.join(_FIXTURES, "swiss_with_many_unplayed_rounds.trf")
 GOLDEN_BEFORE = os.path.join(_FIXTURES, "swiss_with_many_unplayed_rounds.2026-02-28.txt")
 GOLDEN_ON = os.path.join(_FIXTURES, "swiss_with_many_unplayed_rounds.2026-03-01.txt")
-GOLDEN_ON_UPSTREAM = os.path.join(
-    _FIXTURES, "swiss_with_many_unplayed_rounds.2026-03-01.upstream.txt")
 GOLDEN_ALL_BEFORE = os.path.join(
     _FIXTURES, "swiss_with_many_unplayed_rounds.2026-02-28.all.txt")
 GOLDEN_ALL_ON = os.path.join(
@@ -417,10 +415,13 @@ def test_a_real_swiss_the_day_before_the_2026_rules():
 
 
 def test_a_real_swiss_on_the_day_the_2026_rules_start():
-    # 2026-03-01: the caps apply. This golden is a baseline of what this branch produces,
-    # not a claim that every cell of it is right - start number 4's SB/C2 is the known
-    # article 16.5.1 tie-break defect recorded in the expected failure at the end of this
-    # file, and regenerate this golden when that is fixed.
+    # 2026-03-01: the caps apply, so this is the same file measured under the other rule
+    # set. Start number 4 is the row the article 16.5.1 tie-break between equal VUR
+    # contributions decides; its SB/C2 of 5.00 is the corrected value, derived cell by
+    # cell in test_art_16_5_1_ties_among_equal_vur_contributions_go_to_the_lowest_
+    # opponent_score below, and pinned again against the upstream selector in
+    # test_the_two_selectors_agree_on_this_tournament. Regenerate this golden only when
+    # a value change is intended, and say in the commit message which cells moved.
     assert checker_output(real_swiss("2026-03-01"), TIEBREAKS) == golden(GOLDEN_ON)
 
 
@@ -449,19 +450,84 @@ def test_the_2026_caps_change_this_tournament():
     assert golden(GOLDEN_ON).endswith("Check: False\n")
 
 
+def upstream_select_low_cut_game(games, ignore_vur_exception=False):
+    """The low-cut selector as it stands upstream, reimplemented here.
+
+    Upstream sorts twice and takes the head of one list or the other::
+
+        sortall = sorted(bhvalue, key=lambda game: (game["score"], game["tbvalue"]))
+        sortexp = sorted(bhvalue, key=lambda game: (-game["vur"], game["score"],
+                                                    game["tbvalue"]))
+        if vun or sortall[0]["tbvalue"] > sortexp[0]["tbvalue"]:
+            ... sortall[0] ...
+        else:
+            ... sortexp[0] ...
+
+    ``-game["vur"]`` floats the VURs to the front, so ``sortexp[0]`` is the VUR with
+    the *lowest dummy score*, where art. 16.5.1 asks for the lowest *contribution*.
+    That is the ordering this branch corrected. It is transcribed rather than imported
+    so the comparison below stays a comparison of two independent implementations: a
+    change to ``tiebreak._select_low_cut_game`` cannot move both sides of it at once.
+    """
+    sortall = sorted(games, key=lambda game: (game["score"], game["tbvalue"]))
+    sortexp = sorted(games, key=lambda game: (-game["vur"], game["score"],
+                                              game["tbvalue"]))
+    if ignore_vur_exception or sortall[0]["tbvalue"] > sortexp[0]["tbvalue"]:
+        return sortall[0]
+    return sortexp[0]
+
+
+@contextlib.contextmanager
+def low_cut_selector(function):
+    # tiebreak.compute_buchholz_sonneborn_berger looks _select_low_cut_game up as a
+    # module global on every cut, so rebinding the module attribute is what the engine
+    # then runs - the real cut loop, over the real fixture, with the other selector.
+    saved = tiebreak._select_low_cut_game
+    tiebreak._select_low_cut_game = function
+    try:
+        yield
+    finally:
+        tiebreak._select_low_cut_game = saved
+
+
 def test_the_two_selectors_agree_on_this_tournament():
-    # They did not always. Before the art. 16.5.1 tie-break was corrected, this branch
-    # gave start number 4 an SB/C2 of 6.00 where upstream gave 5.00 - the whole of the
-    # difference on this file, and upstream was right. It is now byte-identical.
-    #
-    # The disagreement this branch does still have with upstream is confined to the
-    # constructed tournament earlier in this file, where a half-point bye and a forfeit
-    # loss take different dummy scores and the two candidates genuinely come apart.
-    # Keeping the upstream golden pins that: reintroduce the tie-break bug and this
-    # fails, naming the competitor.
-    assert golden(GOLDEN_ON) == golden(GOLDEN_ON_UPSTREAM)
-    assert changed_rows(golden(GOLDEN_ON_UPSTREAM), golden(GOLDEN_ON)) == set()
-    assert "4\t12\t2.5\t6.00\t6.00\t5.00" in golden(GOLDEN_ON)
+    """The two low-cut selectors produce the same standings on the real Swiss.
+
+    They did not always. Before the art. 16.5.1 tie-break between equal VUR
+    contributions was corrected, this branch gave start number 4 an SB/C2 of 6.00
+    where upstream gave 5.00 - the whole of the difference on this file, and upstream
+    was right.
+
+    This runs the engine twice over the same fixture, once with each selector, and
+    compares the two outputs to each other and each to the one golden. There is one
+    golden because the two selectors agree here: a second file for the upstream
+    selector would be byte-identical to the first, and a test that compared the two
+    files to each other would assert a file equals itself without calling the engine
+    at all. This proves what its name says: that the selector this branch ships and
+    the selector upstream ships agree cell for cell on this pairing history, and that
+    both still produce the output recorded in the golden.
+
+    The disagreement this branch does still have with upstream is confined to the
+    constructed tournament earlier in this file, where a half-point bye and a forfeit
+    loss take different dummy scores and the two candidates genuinely come apart.
+
+    Reintroduce the tie-break - select the lowest VUR contribution without ordering
+    the ties by opponent score - and the first assertion fails naming start number 4,
+    because the engine then cuts his round 1 rather than his equally-contributing
+    round 2 and his SB/C2 comes out 6.00 against upstream's 5.00.
+    """
+    lines = real_swiss("2026-03-01")
+    branch = checker_output(lines, TIEBREAKS)
+    with low_cut_selector(upstream_select_low_cut_game):
+        upstream = checker_output(lines, TIEBREAKS)
+
+    # Named first, so a disagreement reports the start numbers that moved rather than
+    # a diff of two fifteen-row tables.
+    assert changed_rows(upstream, branch) == set()
+    assert branch == golden(GOLDEN_ON)
+    assert upstream == golden(GOLDEN_ON)
+    # Start number 4 is the row the tie-break decides; 5.00 is the corrected SB/C2.
+    assert "4\t12\t2.5\t6.00\t6.00\t5.00" in branch
 
 
 def test_art_16_5_1_ties_among_equal_vur_contributions_go_to_the_lowest_opponent_score():

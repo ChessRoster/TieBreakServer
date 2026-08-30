@@ -6,16 +6,29 @@ The cut is limited by the number of rounds, not by the number of games the compe
 actually has. A competitor who withdrew, entered late or was given byes has fewer games
 than that, so a cut can consume every game he has.
 """
+import contextlib
+import io
+import os
+import sys
+import tempfile
 from decimal import Decimal
 
 import pytest
 
 import tiebreak
+import tiebreakchecker
 import trf2json
 
 PAB = (0, "-", "U")  # pairing-allocated bye
 HPB = (0, "-", "H")  # half-point bye
 ZPB = (0, "-", "Z")  # zero-point bye
+
+_FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
+REAL_SWISS = os.path.join(_FIXTURES, "swiss_with_many_unplayed_rounds.trf")
+GOLDEN_BEFORE = os.path.join(_FIXTURES, "swiss_with_many_unplayed_rounds.2026-02-28.txt")
+GOLDEN_ON = os.path.join(_FIXTURES, "swiss_with_many_unplayed_rounds.2026-03-01.txt")
+GOLDEN_ON_UPSTREAM = os.path.join(
+    _FIXTURES, "swiss_with_many_unplayed_rounds.2026-03-01.upstream.txt")
 
 
 def player_line(startno, name, rating, points, games):
@@ -303,3 +316,132 @@ def test_art_16_4_caps_apply_from_the_start_date_of_the_2026_rules():
 
     assert compute(on_the_day, ["SB/C1"], swiss=True)[2] == "2.50"
     assert compute(on_the_day, ["SB/C2"], swiss=True)[2] == "1.00"
+
+
+def checker_output(lines, tiebreaks):
+    # Drive the real command-line checker in-process, the way tests/corpus/_harness.py
+    # does, so a golden file is byte for byte what
+    #     python tiebreakchecker.py -i FILE -o OUT -c -dT -t PTS SB SB/C1 SB/C2
+    # writes. Comparing whole outputs rather than a dict of values keeps the golden
+    # reviewable in a diff and catches a change of rank or of the Check line too.
+    workdir = tempfile.mkdtemp()
+    source = os.path.join(workdir, "tournament.trf")
+    output = os.path.join(workdir, "tiebreaks.txt")
+    with open(source, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines))
+    saved_argv = sys.argv
+    sys.argv = ["tiebreakchecker", "-i", source, "-o", output, "-c", "-dT", "-t"] + tiebreaks
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            try:
+                tiebreakchecker.tiebreakchecker().common_main()
+            except SystemExit:
+                pass
+    finally:
+        sys.argv = saved_argv
+    with open(output, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def golden(path):
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def real_swiss(startdate=None):
+    # Fifteen players, seven rounds, a real Swiss with names, federation, identifiers and
+    # birth dates removed. It is thick with unplayed rounds - half-point byes, zero-point
+    # byes, pairing-allocated byes and forfeits on both sides - which is what makes it
+    # worth keeping: the article 16 paths are exercised on a real pairing history rather
+    # than on a fixture built to reach them.
+    #
+    # The file is dated 2026-02-28, the last day before the March 2026 rules, so as it
+    # stands it runs under the rules of 2024-08-01. startdate re-dates it in memory.
+    lines = open(REAL_SWISS, encoding="utf-8").read().split("\n")
+    if startdate is None:
+        return lines
+    return [("042 " + startdate) if line.startswith("042 ") else line for line in lines]
+
+
+TIEBREAKS = ["PTS", "SB", "SB/C1", "SB/C2"]
+
+
+def test_a_real_swiss_the_day_before_the_2026_rules():
+    # 2026-02-28: no article 16.4 cap applies, so every VUR of a participant takes that
+    # participant's own score as its dummy. Nothing here depends on how VURs are ranked
+    # against each other, because without the caps they cannot be ranked apart - this
+    # golden is the same on the upstream implementation and on this branch.
+    assert checker_output(real_swiss(), TIEBREAKS) == golden(GOLDEN_BEFORE)
+
+
+def test_a_real_swiss_on_the_day_the_2026_rules_start():
+    # 2026-03-01: the caps apply. This golden is a baseline of what this branch produces,
+    # not a claim that every cell of it is right - start number 4's SB/C2 is the known
+    # article 16.5.1 tie-break defect recorded in the expected failure at the end of this
+    # file, and regenerate this golden when that is fixed.
+    assert checker_output(real_swiss("2026-03-01"), TIEBREAKS) == golden(GOLDEN_ON)
+
+
+def changed_rows(left, right):
+    # The start numbers whose row differs between two checker outputs, plus any change to
+    # the trailing Check line.
+    lrows = left.rstrip("\n").split("\n")
+    rrows = right.rstrip("\n").split("\n")
+    assert len(lrows) == len(rrows), "outputs have different shapes"
+    changed = set()
+    for lrow, rrow in zip(lrows, rrows):
+        if lrow != rrow:
+            key = lrow.split("\t")[0]
+            changed.add("Check" if key.startswith("Check") else key)
+    return changed
+
+
+def test_the_2026_caps_change_this_tournament():
+    # What crossing 2026-03-01 does to one real tournament: nine of the fifteen move,
+    # four of them change rank, and the standings no longer match the order the file
+    # declares, so the checker's own consistency check goes from True to False.
+    assert changed_rows(golden(GOLDEN_BEFORE), golden(GOLDEN_ON)) == {
+        "1", "3", "4", "5", "9", "10", "11", "12", "14", "Check",
+    }
+    assert golden(GOLDEN_BEFORE).endswith("Check: True\n")
+    assert golden(GOLDEN_ON).endswith("Check: False\n")
+
+
+def test_the_two_selectors_differ_on_one_competitor_of_the_fifteen():
+    # Under the 2026 rules the upstream selector and this branch's disagree, and this is
+    # the whole of it on a real tournament: one competitor, one column. Start number 4
+    # forfeited three rounds, so he is the only player here carrying more than one VUR
+    # whose second cut turns on how they are ordered.
+    assert changed_rows(golden(GOLDEN_ON_UPSTREAM), golden(GOLDEN_ON)) == {"4"}
+    assert "4\t12\t2.5\t6.00\t6.00\t5.00" in golden(GOLDEN_ON_UPSTREAM)
+    assert "4\t12\t2.5\t6.00\t6.00\t6.00" in golden(GOLDEN_ON)
+
+
+@pytest.mark.xfail(strict=True, reason="_select_low_cut_game ranks VURs by contribution "
+                   "alone, so when several share the lowest contribution it takes the "
+                   "earliest round rather than the least significant element; art. 16.5.1 "
+                   "makes them the same element when the least significant value is "
+                   "itself a VUR")
+def test_art_16_5_1_ties_among_equal_vur_contributions_go_to_the_lowest_opponent_score():
+    # Start number 4 forfeited rounds 1, 2 and 3, so all three are VURs contributing
+    # 0.00, but art. 16.4.1 caps their dummy scores at the scheduled opponent's adjusted
+    # score and gives them 2.5, 1.5 and 2.5. His seven elements are:
+    #
+    #     round 1  2.5 x 0.0 = 0.00   VUR, forfeit loss
+    #     round 2  1.5 x 0.0 = 0.00   VUR, forfeit loss   <- least significant value
+    #     round 3  2.5 x 0.0 = 0.00   VUR, forfeit loss
+    #     round 4  2.5 x 1.0 = 2.50   pairing-allocated bye
+    #     round 5  2.0 x 0.5 = 1.00   played
+    #     round 6  2.5 x 0.5 = 1.25   played
+    #     round 7  2.5 x 0.5 = 1.25   played
+    #
+    # Round 2 is the least significant value - its opponent's score, 1.5, is the lowest -
+    # and it is itself a VUR, so by art. 16.5.1's "they are the same element if the least
+    # significant value comes from a VUR" it is the element the first cut must take.
+    #
+    # Cut-1 removes 0.00 either way, so SB/C1 is 6.00 whichever element goes. Cut-2 is
+    # where it shows. With round 2 gone the least significant value left is round 5's
+    # 1.00, and the lowest remaining VUR contribution, 0.00, is lower than that, so
+    # art. 16.5.1 does not apply and the ordinary candidate is cut: 6.00 - 1.00 = 5.00.
+    # Cutting round 1 first instead leaves round 2 in the pool and takes another 0.00.
+    assert compute(real_swiss("2026-03-01"), ["SB/C2"], swiss=True)[4] == "5.00"

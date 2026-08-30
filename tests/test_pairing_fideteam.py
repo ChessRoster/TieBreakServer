@@ -900,11 +900,13 @@ def test_art_2_3_5_c8_minimise_the_unfulfilled_colour_preferences():
     """[C8] art. 2.3.5 - minimise the number of teams whose colour preference is not
     fulfilled.
 
-    Four teams on 2 match points. 1 and 2 have played White twice (a preference for Black
+    Four teams on 4 match points. 1 and 2 have played White twice (a preference for Black
     under both types), 3 and 4 have played Black twice (a preference for White). Pairing
     1-2 and 3-4 would leave two preferences unfulfilled; pairing 1 and 2 against 3 and 4
-    leaves none, and [C8] says so - even though the identifier of art. 3.6.2 prefers
-    1-2 / 3-4 (identifier "1 3 2 4" against "1 2 3 4"). [C8] comes first (art. 3.6.4).
+    leaves none, and [C8] says so. The identifier of art. 3.6.2 asks for the same pairing
+    here - "1 2 3 4" for 1-3 2-4 against "1 3 2 4" for 1-2 3-4 - so this position pins
+    what [C8] counts, not that it comes first (art. 3.6.4); simple_preferences below is
+    the position in which [C8] overrides the identifier.
     """
     tournament = event(8, 6)
     tournament.match(1, 1, 5, ["W", "W"])       # 1 white
@@ -1054,6 +1056,71 @@ def test_art_1_7_type_a_and_type_b_pair_the_same_position_differently():
         [engineb.opponents[1][3], engineb.opponents[2][4]], None
     )
     assert rejected["QC8"] == 2
+
+
+def simple_preferences(nocolor):
+    """Eight teams again, and 1 to 4 have won every match without meeting each other: a
+    bracket of four before round 3.
+
+    1 and 3 played Black twice and 2 and 4 played White twice, so art. 1.7.1 gives 1 and 3
+    a preference for White and 2 and 4 a preference for Black - simple preferences, the
+    ones type A has. With "colour preferences ... not to be used at all" (art. 1.7) the
+    same four teams have none.
+    """
+    tournament = event(8, 6, nocolor=nocolor)
+    tournament.match(1, 5, 1, ["L", "L"])       # 1 Black, and wins
+    tournament.match(1, 2, 6, ["W", "W"])       # 2 White
+    tournament.match(1, 7, 3, ["L", "L"])       # 3 Black
+    tournament.match(1, 4, 8, ["W", "W"])       # 4 White
+    tournament.match(2, 6, 1, ["L", "L"])       # 1 Black again -> cd -2 -> White
+    tournament.match(2, 2, 5, ["W", "W"])       # 2 White again -> cd +2 -> Black
+    tournament.match(2, 8, 3, ["L", "L"])       # 3 Black again -> cd -2 -> White
+    tournament.match(2, 4, 7, ["W", "W"])       # 4 White again -> cd +2 -> Black
+    return tournament
+
+
+def test_art_1_7_no_colour_preferences_pair_the_position_differently_from_type_a():
+    """Art. 1.7 - "or colour preferences are not to be used at all", in the pairing.
+
+    The bracket is 1, 2, 3, 4. Under type A, 1 and 3 want White and 2 and 4 want Black, so
+    1-3 2-4 leaves two teams unserved and costs [C8] = 2 while 1-4 2-3 costs nothing: art.
+    2.3.5 rejects the pairing that the identifier of art. 3.6.2 would otherwise have taken
+    first, and the bracket is paired 1-4 2-3.
+
+    With no colour preferences at all, nobody wants anything, [C8] costs nothing whatever
+    the pairing is, and the identifier decides alone: 1-3 2-4, the identifier "1 2 3 4"
+    against "1 2 4 3". The third colour model of art. 1.7 is not a relabelling of type A -
+    it pairs the same teams against different opponents.
+    """
+    (enginea, bracketsa) = simple_preferences(nocolor=False).brackets(3)
+    (enginen, bracketsn) = simple_preferences(nocolor=True).brackets(3)
+    assert [enginea.competitors[team]["cop"] for team in (1, 2, 3, 4)] == ["w2", "b2", "w2", "b2"]
+    assert [enginen.competitors[team]["cop"] for team in (1, 2, 3, 4)] == ["nc", "nc", "nc", "nc"]
+    assert sorted(sorted(pair) for pair in bracket_pairs(bracketsa, {1, 2, 3, 4})) == [[1, 4], [2, 3]]
+    assert sorted(sorted(pair) for pair in bracket_pairs(bracketsn, {1, 2, 3, 4})) == [[1, 3], [2, 4]]
+
+
+def test_art_2_3_5_c8_is_inert_when_colour_preferences_are_not_used():
+    """[C8] art. 2.3.5 - "minimise the number of teams whose colour preference is not
+    fulfilled" has nothing to minimise when art. 1.7 asks for no colour preferences.
+
+    In the position of simple_preferences the criterion is what separates the candidate
+    pairings under type A: 1-3 2-4 costs 2 and the other two cost nothing. Without colour
+    preferences every candidate costs 0, so [C8] can no longer reject anything, and the
+    pairing that type A refuses is the one the bracket is given.
+    """
+    (enginea, _) = simple_preferences(nocolor=False).brackets(3)
+    (enginen, bracketsn) = simple_preferences(nocolor=True).brackets(3)
+    candidates = [[(1, 3), (2, 4)], [(1, 4), (2, 3)], [(1, 2), (3, 4)]]
+
+    def weight(engine, candidate):
+        edges = [engine.opponents[a][b] for (a, b) in candidate]
+        return engine.crosstable.compute_weight(edges, None)["QC8"]
+
+    assert [weight(enginea, candidate) for candidate in candidates] == [2, 0, 0]
+    assert [weight(enginen, candidate) for candidate in candidates] == [0, 0, 0]
+    top = enginen.competitors[1]["scorelevel"]
+    assert quality(bracketsn, top, "QC8") == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1498,7 +1565,8 @@ def has_legal_pairing(teams, met, byes):
     return False
 
 
-def simulate(numteams, numrounds, seed, teamsize=2, typeb=False, primary=None, secondary=None):
+def simulate(numteams, numrounds, seed, teamsize=2, typeb=False, primary=None,
+             secondary=None, nocolor=False, colorrules=None):
     """Pair a whole tournament, round by round, drawing the results of every board with
     Gacrux's own rating model, and check every round-pairing against the absolute criteria.
 
@@ -1510,7 +1578,8 @@ def simulate(numteams, numrounds, seed, teamsize=2, typeb=False, primary=None, s
     """
     statistics = drawresult(seed)
     statistics.set_team(1)
-    tournament = event(numteams, numrounds, teamsize=teamsize, typeb=typeb, primary=primary, secondary=secondary)
+    tournament = event(numteams, numrounds, teamsize=teamsize, typeb=typeb, primary=primary,
+                       secondary=secondary, nocolor=nocolor)
     ratings = {team["cid"]: team["rating"] for team in tournament.tournament["competitors"]}
     allteams = list(range(1, numteams + 1))
     met = set()
@@ -1538,6 +1607,8 @@ def simulate(numteams, numrounds, seed, teamsize=2, typeb=False, primary=None, s
                 continue
             # [C1] art. 2.1.1 - two teams shall not meet twice
             assert (w, b) not in met and (b, w) not in met, f"round {rnd}: {w} and {b} meet twice"
+            if colorrules is not None:
+                colorrules.append(pair["colorrule"])
             met.add((w, b))
             met.add((b, w))
             results = []
@@ -1580,6 +1651,40 @@ def test_invariant_sweep_game_points_primary(numteams, numrounds):
     """The same, with game points as the primary score (art. 1.2.1)."""
     for seed in range(1, 6):
         simulate(numteams, numrounds, seed, primary="game", teamsize=4)
+
+
+@pytest.mark.parametrize("numteams,numrounds", [(7, 5), (12, 7), (15, 7)])
+def test_invariant_sweep_no_colour_preferences(numteams, numrounds):
+    """The same, with no colour preferences at all (art. 1.7)."""
+    for seed in range(1, 9):
+        simulate(numteams, numrounds, seed, nocolor=True)
+
+
+def test_art_4_3_allocates_the_colours_without_any_colour_preference():
+    """Art. 4.3 - a match still gets its two colours when no team has a preference.
+
+    Art. 1.7 turns the preferences off, not the colours: the teams still play White and
+    Black, and art. 4.3 "always decides". Four of its rules grant a colour preference -
+    4.3.2, 4.3.3, 4.3.4 and 4.3.7 - and none of them can fire when there is none to grant,
+    so a whole tournament is coloured by 4.3.1 (both teams have yet to play), 4.3.5 (the
+    lower colour difference), 4.3.6 (alternate from the most recent difference) and
+    4.3.8 / 4.3.9 (alternate from the last played round) alone.
+    """
+    rules = []
+    (tournament, rounds) = simulate(14, 7, seed=5, nocolor=True, colorrules=rules)
+
+    assert rounds == 7
+    # every match that was paired got both of its colours
+    played = [match for match in tournament.tournament["matchList"] if match["black"] > 0]
+    assert len(played) == len(rules)
+    for match in played:
+        assert match["white"] > 0 and match["black"] > 0
+        assert match["white"] != match["black"]
+    # and art. 4.3 named a rule for every one of them - never one that grants a preference
+    assert set(rules) <= {"4.3.1", "4.3.5", "4.3.6", "4.3.8", "4.3.9"}
+    assert set(rules) & {"4.3.2", "4.3.3", "4.3.4", "4.3.7"} == set()
+    # the test is not vacuous: the rounds after the first are decided by the later rules
+    assert len(set(rules) - {"4.3.1"}) > 1
 
 
 @pytest.mark.parametrize("seed", [3, 11, 17, 29, 101])

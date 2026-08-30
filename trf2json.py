@@ -124,6 +124,94 @@ class trf2json(chessjson.chessjson):
             "FIDE_DOUBLESCHEVENINGEN"      : {"format": "scheveningen", "teamTournament": True , "pairingSystem": ["scheveningen"] },
             "CUSTOM_SCHEVENINGEN"          : {"format": "scheveningen", "teamTournament": True , "pairingSystem": ["scheveningen"] },
             "CUSTOM_KNOCKOUT"              : {"format": "knokout",      "teamTournament": False, "pairingSystem": ["custom"]       },
+
+            # ----------------------------------------------------------------------------
+            # Record 192 for the team formats: the colour model and the score system.
+            #
+            # A team code carries three decisions, and the reader takes them from two
+            # different places. The pairing system and the colour model come from this
+            # table. The primary and the secondary score come from the tokens
+            # parse_trf_typetournament() reads out of the code itself, further down this
+            # file: "_MP_GP", "_GP_MP", "_MP", "_GP", tested in that order.
+            #
+            #   colour model     C.04.6 art. 1.7. "team_typea" is the type A preference of
+            #                    art. 1.7.1, "team_typeb" the type B preference of art.
+            #                    1.7.2, "nocolor" the third model of art. 1.7 - "colour
+            #                    preferences are not to be used at all".
+            #   primary score    C.04.6 art. 1.2: which of match points and game points
+            #                    ranks the teams. Read by crosstable.compute_tiebreak.
+            #   secondary score  art. 1.2 again: the other score, used for the colour
+            #                    allocation of art. 4.2.2. A code naming one score has
+            #                    none. A code naming neither leaves both unset, and
+            #                    pairing_fideteam then applies the art. 1.2.2 default -
+            #                    match points rank, game points decide the colour.
+            #
+            #   record 192 code                colour model  primary  secondary
+            #   FIDE_TEAM_TYPEA_MP_GP          type A        match    game
+            #   FIDE_TEAM_TYPEA_GP_MP          type A        game     match
+            #   FIDE_TEAM_TYPEA_MP             type A        match    -
+            #   FIDE_TEAM_TYPEA_GP             type A        game     -
+            #   FIDE_TEAM_TYPEB_MP_GP          type B        match    game
+            #   FIDE_TEAM_TYPEB_GP_MP          type B        game     match
+            #   FIDE_TEAM_TYPEB_MP             type B        match    -
+            #   FIDE_TEAM_TYPEB_GP             type B        game     -
+            #   FIDE_TEAM_MP_GP                none          match    game
+            #   FIDE_TEAM_GP_MP                none          game     match
+            #   FIDE_TEAM_MP                   none          match    -
+            #   FIDE_TEAM_GP                   none          game     -
+            #   FIDE_TEAM                      type A        (art. 1.2.2: match, game)
+            #   FIDE_TEAM_TYPEA_MP_GP_BAKU     type A        match    game
+            #   FIDE_TEAM_TYPEA_MP_BAKU        type A        match    -
+            #   FIDE_TEAM_TYPEB_MP_GP_BAKU     type B        match    game
+            #   FIDE_TEAM_TYPEB_MP_BAKU        type B        match    -
+            #   FIDE_TEAM_MP_GP_BAKU           none          match    game
+            #   FIDE_TEAM_MP_BAKU              none          match    -
+            #   FIDE_TEAM_BAKU                 type A        (art. 1.2.2: match, game)
+            #
+            # The _BAKU codes are the C.04.7 acceleration, and they exist only with match
+            # points as the primary score. The regulation says so once, in the footnote
+            # on the second example under C.04.7 art. 1.4.4 ("Note that if gamepoints
+            # were the primary score, the Baku Acceleration could not be used"), so
+            # there is deliberately no FIDE_TEAM_GP_BAKU
+            # and no FIDE_TEAM_*_GP_MP_BAKU. A file that writes one anyway is not in this
+            # table at all, so it gets no format, no teamTournament and no pairing system,
+            # while parse_trf_typetournament() still sets the primary score from its tokens.
+            #
+            # The remaining team codes are not C.04.6 and have no colour model of their own:
+            #
+            #   CUSTOM_TEAM_SWISS_MP           -             match    -
+            #   CUSTOM_TEAM_SWISS_GP           -             game     -
+            #   CUSTOM_TEAM_SWISS              -             -        -
+            #   BERGER_TEAM_ROUNDROBIN         -             -        -
+            #   BERGER_TEAM_DOUBLEROUNDROBIN   -             -        -
+            #   FIDE_TEAM_ROUNDROBIN           -             -        -
+            #   FIDE_TEAM_DOUBLEROUNDROBIN     -             -        -
+            #   CUSTOM_TEAM_ROUNDROBIN         -             -        -
+            #   CUSTOM_TEAM_KNOCKOUT           -             -        -
+            #
+            # OPEN QUESTION for the maintainer, not a settled reading.
+            #   C.04.6 art. 1.7 says "Type A colour preferences are used unless the rules of
+            #   the team competition specify Type B, or no colour preferences at all". On a
+            #   plain reading of that, a code with no TYPE token specifies nothing and should
+            #   therefore fall to the type A default - which is what FIDE_TEAM and
+            #   FIDE_TEAM_BAKU do, and what FIDE_TEAM_MP_GP and its four siblings do not.
+            #   The table above reads the absence of a TYPE token in two different ways in
+            #   the same family, so as it stands the vocabulary contradicts art. 1.7 and
+            #   itself.
+            #
+            #   Both readings are defensible. "No TYPE token means the art. 1.7 default"
+            #   follows the article. "FIDE_TEAM_MP_GP is the code a file writes when the
+            #   competition uses no colour preferences at all" gives the third model of art.
+            #   1.7 the only spelling it has, since there is no TYPEC token to write - and
+            #   that is why the mapping is what it is.
+            #
+            #   Deciding between them is a decision about the regulation, and it moves the
+            #   pairings of every existing FIDE_TEAM_MP_GP file, so it is not made here.
+            #   tests/test_trf_fideteam_colour_model.py freezes the table as it stands, so
+            #   whenever the decision is taken it is a one-line change with a failing test
+            #   against it rather than a silent drift.
+            # ----------------------------------------------------------------------------
+
             "FIDE_TEAM_TYPEA_MP_GP"        : {"format": "swiss",        "teamTournament": True , "pairingSystem": ["fideteam", "team_typea"] },
             "FIDE_TEAM_TYPEA_GP_MP"        : {"format": "swiss",        "teamTournament": True , "pairingSystem": ["fideteam", "team_typea"] },
             "FIDE_TEAM_TYPEA_MP"           : {"format": "swiss",        "teamTournament": True , "pairingSystem": ["fideteam", "team_typea"] },
@@ -163,6 +251,10 @@ class trf2json(chessjson.chessjson):
         self.byelist = []
         self.forfeitedlist = []
         self.ooolist = []
+        # Record 299 abnormal assignments scoped to a round or a competitor, kept as they
+        # are read. Nothing in the engine applies one yet, so validate_abnormal_assignments()
+        # refuses the ones that would change a score and lets the inert ones through; an
+        # implementation of record 299 finds them all here.
         self.aatlist = []
         # TRF-2026 allows record 320 once per tournament, and record 240 once per bye
         # type per round; the parsers refuse a repeat rather than merge two of them.
@@ -234,6 +326,8 @@ class trf2json(chessjson.chessjson):
             self.update_board_number(tournament, "game", False)
         self.update_individualbye_list(tournament)
         self.update_forfeited_list(tournament)
+        # Last, because it needs the finished game list, match list and score system.
+        self.validate_abnormal_assignments(tournament)
         return
 
     # Read all lines into a structure
@@ -284,13 +378,21 @@ class trf2json(chessjson.chessjson):
                         # return leaves all_lines unset, and parse_file then reads it.
                         raise
                     except Exception:
+                        # A parser that failed without saying why -- a KeyError out of a
+                        # translation table, say, when record 330 carries a forfeit code
+                        # that is not one of the three the specification defines. Name
+                        # the line and stop reading, but hand the pass-1 structure back:
+                        # parse_file() reads it ("162" in self.all_lines) the moment this
+                        # returns, and a bare return would replace the status code just
+                        # recorded with a TypeError on None.
+                        #
                         # Exception, not a bare except: KeyboardInterrupt and SystemExit
                         # are not errors in the file, and a user who interrupts a long
                         # read must get the interrupt, not "Error in trf-file, line N".
                         if verbose:
                             raise
                         self.put_status(401, "Error in trf-file, line " + str(lineno) + ", " + line)
-                        return
+                        return all_lines
             nexttrfid = self.post_parse_line(tournament, trfid)
         if "001" not in all_lines and "092" not in all_lines:
             self.put_status(401, "Error in trf, no 001 records")
@@ -1164,10 +1266,37 @@ class trf2json(chessjson.chessjson):
         for i in range(27, linelen + 1, 5):
             team = parse_int(line[i - 4 : i])
             teams.append(team)
-        if att["round"] == 0 and (len(teams) == 0 or teams[0] == 0):
-            self.scores.add_unplayed(att["att"], att["matchPoints"], att["gamePoints"])
-        else:
+
+        # Record 299 has two forms, and only one of them is a score system.
+        #
+        # No round and no pairing numbers -- the form the specification writes out in its
+        # own note -- states what an abnormal result is worth for the whole tournament,
+        # which is what scoresystem.add_unplayed() holds.
+        #
+        # A record that names a round or a competitor is an assignment: these points, to
+        # this competitor, in this round. The engine does not apply one, so the records
+        # are kept here and checked once the file is read -- see
+        # validate_abnormal_assignments(), which refuses the ones the engine would
+        # otherwise get wrong. The check cannot be made here: the score system is not
+        # solved and the match list does not exist until parse_file() has finished
+        # reading, and both are needed to know whether an assignment would change
+        # anything.
+        named = [team for team in teams if team > 0]
+        if att["att"] == " ":
+            # A blank type is not the value of a result but a penalty or bonus on the
+            # standings ("the points in the standings of teams or individuals (type:
+            # [blank]) are modified by a positive or negative number"). There is no
+            # result code for the score system to hold it under -- the unscoped form
+            # used to put the keys " " and " G" into the match score system -- so it is
+            # kept for validate_abnormal_assignments() whether it names a scope or not.
+            att["teams"] = named
             self.aatlist.append(att)
+            return
+        if att["round"] == 0 and len(named) == 0:
+            self.scores.add_unplayed(att["att"], att["matchPoints"], att["gamePoints"])
+            return
+        att["teams"] = named
+        self.aatlist.append(att)
 
     def parse_trf_acceleratedv4(self, tournament, line):
         linelen = len(line)
@@ -1667,40 +1796,365 @@ class trf2json(chessjson.chessjson):
             self.update_team_score(tournament)
 
     def validate_team_scores(self, tournament):
-        """Check the match- and game-point totals declared by TRF26 record 310."""
-        calculated_match = {competitor["cid"]: Decimal("0.0") for competitor in tournament["competitors"]}
-        for match in tournament["matchList"]:
-            if match["round"] > tournament["currentRound"] and match.get("wResult") != "P":
-                continue
-            white = match.get("white", 0)
-            black = match.get("black", 0)
-            if white > 0:
-                calculated_match[white] += self.scores.get_score(
-                    tournament, "match", match.get("wResult", "Z")
-                )
-            if black > 0:
-                calculated_match[black] += self.scores.get_score(
-                    tournament, "match", match.get("bResult", "Z")
-                )
+        """Check the match- and game-point totals declared by TRF26 record 310.
 
-        badteams = []
+        Record 310 columns 55-60 and 62-67 carry a team's match points and game points --
+        its standing -- and the two are checked against two different things. The match
+        points are the sum of what each of the team's matches was worth. The game points
+        are the sum of the totals the team's players report in column 81-84 of their own
+        001 records.
+
+        Which matches count is decided per match, not per round, and not from
+        tournament["currentRound"]. currentRound is advanced by parse_trf_player() only
+        for a game actually played against a real opponent, so a round decided entirely
+        by forfeit -- record 330, the whole match awarded with nobody at the board -- and
+        a round in which every team sat out never advance it, while record 310's totals
+        include both.
+
+        A match counts when the file records something for its round:
+
+          * the game list has a game in that round. That is the players' own 001 records,
+            and it is what a round looks like once it has happened, whether it was played,
+            awarded under record 330 with "+" and "-" on every board, or sat out by the
+            whole field with "U" on every board. All three are in record 310's totals.
+          * or the match sets two teams against each other. A pairing carrying no results
+            scores Z on both sides and contributes nothing, so this costs nothing and
+            covers a match declared by record 330 alone.
+
+        What is left out is a bye in a round no player has an entry for: record 240 or
+        record 320 naming a team for a round that has not reached the 001 records. That
+        is a pairing which has been announced and not played, and its points are not in
+        record 310 yet.
+
+        The question is deliberately asked of the game list rather than of the games
+        games2matches leaves on the match: build_tmatches() empties the game list of any
+        bye that a record 240, 320 or 330 declared, and keeps it on a bye that only the
+        001 records produced, so the games left on a bye say which record made it and not
+        whether anything happened.
+
+        This rejects the event, not a team, so the message has to be one somebody can act
+        on: which team, which rounds were counted, and both figures.
+        """
+        competitors = {competitor["cid"]: competitor for competitor in tournament["competitors"]}
+        calculated_match = {cid: Decimal("0.0") for cid in competitors}
+        recorded = {game["round"] for game in tournament["gameList"]}
+        played = set()
+
+        for match in tournament["matchList"]:
+            counted = match["round"] in recorded or match.get("black", 0) > 0
+            if counted:
+                played.add(match["round"])
+            for colour, result in [("white", "wResult"), ("black", "bResult")]:
+                cid = match.get(colour, 0)
+                if cid <= 0:
+                    continue
+                if cid not in calculated_match:
+                    # Every record that names a team is checked as it is read, so this is
+                    # the last place a number that names nobody can arrive. Indexing
+                    # straight into the totals would make it a bare KeyError.
+                    numbers = sorted(competitors.keys())
+                    message = (
+                        "A match in round " + str(match["round"]) + " is played by team "
+                        + str(cid) + ", which record 310 does not declare: the tournament"
+                        + " has " + str(len(numbers)) + " teams"
+                        + (" (" + str(numbers[0]) + " - " + str(numbers[-1]) + ")" if numbers else "")
+                    )
+                    self.put_status(401, message)
+                    raise GacruxInputError(message)
+                if counted:
+                    calculated_match[cid] += self.scores.get_score(
+                        tournament, "match", match.get(result, "Z")
+                    )
+
+        problems = []
         for competitor in tournament["competitors"]:
             cid = competitor["cid"]
             calculated_game = sum(
                 (player["gamePoints"] for player in competitor["cplayers"]),
                 Decimal("0.0"),
             )
-            if (
-                competitor["matchPoints"] != calculated_match[cid]
-                or competitor["gamePoints"] != calculated_game
-            ):
-                badteams.append(str(cid))
+            if competitor["matchPoints"] != calculated_match[cid]:
+                problems.append(
+                    "team " + str(cid) + " declares " + str(competitor["matchPoints"])
+                    + " match points, the matches give " + str(calculated_match[cid])
+                )
+            if competitor["gamePoints"] != calculated_game:
+                problems.append(
+                    "team " + str(cid) + " declares " + str(competitor["gamePoints"])
+                    + " game points, the 001 records of its players give " + str(calculated_game)
+                )
 
-        if badteams:
-            raise GacruxInputError(
-                "record 310 reports incorrect match or game points for team(s) "
-                + ", ".join(badteams)
+        if problems:
+            message = (
+                "Record 310 disagrees with the results of " + self.describe_rounds(played)
+                + ": " + "; ".join(problems)
             )
+            self.put_status(401, message)
+            raise GacruxInputError(message)
+
+    # ==============================
+    #
+    # Record 299, Abnormal Assignment points
+
+    def validate_abnormal_assignments(self, tournament):
+        """Refuse the scoped record 299 assignments the engine would get wrong.
+
+        TRF-2026 record 299 puts the type of the assignment in column 5, the match points
+        in 8-11, the game points in 14-17, the round in 20-22 and the pairing numbers from
+        24 on. Column 5 is a result code -- the same vocabulary as the result column of a
+        001 record -- so the record says "when this competitor has this result in this
+        round, it is worth these points instead".
+
+        Nothing in the engine applies one (changelog.txt, commit 12d30a5: deliberate,
+        declared future work), so a file that needs one would be scored by different rules
+        than it asks for, with status 0 and no message. That is the failure this refuses.
+
+        It refuses only the records that would actually change something, because the cost
+        of refusing is a whole event and not a record:
+
+          * the competitor has no such result in that round -- the assignment cannot fire
+            whatever the engine does with it, and every number reported is already the
+            number a record-299-aware engine would report. Accepted.
+          * the assignment fires, and the points it gives that result are the points the
+            score system already gives it. It fires and changes nothing. Accepted.
+          * the assignment fires and the points differ. Refused, naming the competitor,
+            the round, the result and both point values.
+
+        The blank type is the exception, because it names no result at all. TRF-2026,
+        column 5: "(blank) penalty/bonus points (may be negative)" -- the points in the
+        standings of the teams or individuals it names are modified by the number it
+        carries, whatever the reason. Nothing in the engine adds such a number to a
+        standing, so a nonzero one is refused whether it names a scope or not, and a
+        zero one is accepted because it changes nothing.
+
+        This runs after parse_file() has read the whole file: the score system is solved
+        from the 001 totals and the match list is built by games2matches, and neither
+        exists while the record is being read.
+        """
+        for att in self.aatlist:
+            for number in att["teams"]:
+                self.check_abnormal_number(tournament, att, number)
+
+            if att["att"] == " ":
+                if att["matchPoints"] == 0 and att["gamePoints"] == 0:
+                    continue
+                number = att["teams"][0] if att["teams"] else None
+                self.refuse_abnormal_assignment(tournament, att, number, "standings")
+
+            result = self.results.get(att["att"])
+            # A record whose column 5 is not a result code at all names no result to look
+            # up, so there is no way to tell that it is inert. Refuse it rather than guess.
+            fired = None if result is None else False
+            # No pairing number means every competitor in that round.
+            numbers = att["teams"] if att["teams"] else sorted(self.pcompetitors.keys())
+            for number in numbers:
+                if result is not None:
+                    fired = self.abnormal_assignment_fires(tournament, att, number, result)
+                if fired is not False:
+                    self.refuse_abnormal_assignment(tournament, att, number, fired)
+
+    def abnormal_reading(self, tournament, number):
+        """What a record 299 pairing number names: a "player", a "team", or nothing.
+
+        TRF-2026 labels the field of record 299 "(Team) Pairing Number" -- the one record
+        with that label; records 300, 320 and 330 say "Team Pairing Number" and record
+        240 "Player/Team ID" -- and describes it as the "1st team or individual (if any)
+        getting this point distribution". In a team event the label leaves open whether
+        the number is a team's or a player's: the record's two point fields are match
+        points and game points, a match-point assignment can only belong to a team, and
+        a game-point assignment reads naturally as a player's. Files in the wild use the
+        player start number in team events.
+
+        So both readings are accepted, and the choice this reader makes is that the
+        player reading wins where a number is valid under both. That is a choice, not a
+        rule of the specification: it is the reading every file we have means, and it is
+        the finer of the two, so it looks the assignment up against the games rather than
+        the matches. A file that means the team, and numbers its teams within the range
+        of its player start numbers, is read as naming players.
+        """
+        if number in self.pcompetitors:
+            return "player"
+        teams = self.tcompetitors if len(self.tcompetitors) > 0 else self.bcompetitors
+        if tournament["teamTournament"] and number in teams:
+            return "team"
+        return None
+
+    def abnormal_assignment_fires(self, tournament, att, number, result):
+        """Would this assignment change what the reader reports for this competitor?
+
+        False when it would not. Otherwise a tuple describing what it would change:
+        the result letter, the rounds it fires in, the points the record assigns and the
+        points the file gives that result today -- for a team, both the match points and
+        the game points, because record 299 assigns both (columns 8-11 and 14-17) and a
+        record that agrees on one and not the other still changes the score.
+        """
+        team = self.abnormal_reading(tournament, number) == "team"
+        if team:
+            entries = tournament["matchList"]
+            slist = tournament["scoreSystem"]["match"]
+        else:
+            entries = tournament["gameList"]
+            slist = tournament["scoreSystem"]["game"]
+
+        rounds = []
+        gamepoints = []
+        for entry in entries:
+            if att["round"] > 0 and entry["round"] != att["round"]:
+                continue
+            if entry.get("white", 0) == number:
+                colour = "white"
+            elif entry.get("black", 0) == number:
+                colour = "black"
+            else:
+                continue
+            # The result code carries whether the game was played, and that is what tells
+            # a forfeit win ("F") from a win at the board: both are stored as "W".
+            if (self.recorded_result(entry, colour) == result["points"]
+                    and entry.get("played") == result["played"]):
+                rounds.append(entry["round"])
+                if team:
+                    gamepoints.append(self.team_match_game_points(tournament, entry, number))
+        if len(rounds) == 0:
+            return False
+
+        current = result["points"]
+        while current in slist:
+            current = slist[current]
+        if not team:
+            if att["gamePoints"] == current:
+                return False
+            return (result["points"], sorted(set(rounds)), att["gamePoints"], current)
+
+        if att["matchPoints"] == current and all(points == att["gamePoints"] for points in gamepoints):
+            return False
+        declared = str(att["matchPoints"]) + " match points and " + str(att["gamePoints"]) + " game points"
+        current = (str(current) + " match points and "
+                   + ", ".join(str(points) for points in sorted(set(gamepoints))) + " game points")
+        return (result["points"], sorted(set(rounds)), declared, current)
+
+    def team_match_game_points(self, tournament, match, number):
+        """The game points one team took from one entry of the match list.
+
+        The boards of a match are the games it lists, scored one by one for the side the
+        team's player had; a bye declared by record 240, 320 or 330 lists no games (see
+        games2matches.build_tmatches), and is worth what the match score system says a
+        bye of that result is worth in game points ("PG" for a pairing-allocated bye).
+        """
+        games = {game["id"]: game for game in tournament["gameList"]}
+        points = Decimal("0.0")
+        found = False
+        for gameid in match.get("games", []):
+            game = games.get(gameid)
+            if game is None:
+                continue
+            if self.cteam.get(game.get("white", 0), 0) == number:
+                colour = "white"
+            elif self.cteam.get(game.get("black", 0), 0) == number:
+                colour = "black"
+            else:
+                continue
+            letter = self.recorded_result(game, colour)
+            if letter is not None:
+                found = True
+                points += self.scores.get_score(tournament, "game", letter)
+        if found:
+            return points
+        letter = self.recorded_result(match, "white" if match.get("white", 0) == number else "black")
+        if letter is not None and letter + "G" in tournament["scoreSystem"]["match"]:
+            return self.scores.get_score(tournament, "match", letter + "G")
+        return points
+
+    def refuse_abnormal_assignment(self, tournament, att, number, fired):
+        if number is None:
+            # An unscoped blank-type record: everybody in the standings.
+            what = "team" if tournament["teamTournament"] else "player"
+        else:
+            what = self.abnormal_reading(tournament, number) or "competitor"
+        scope = (
+            ("round " + str(att["round"]) if att["round"] > 0 else "every round")
+            + ", "
+            + (what + "(s) " + ", ".join([str(team) for team in att["teams"]])
+               if att["teams"] else "every " + what)
+        )
+        if fired == "standings":
+            # TRF-2026 record 299, column 5: "(blank) penalty/bonus points (may be
+            # negative)"; "the points in the standings of teams or individuals (type:
+            # [blank]) are modified by a positive or negative number (whatever the
+            # reason)". The match points are "only for teams".
+            points = (
+                str(att["matchPoints"]) + " match points and " + str(att["gamePoints"]) + " game points"
+                if tournament["teamTournament"] else str(att["gamePoints"]) + " points"
+            )
+            message = (
+                "Record 299 with a blank type in column 5 is a penalty or bonus: TRF-2026"
+                + " says the points in the standings of the teams or individuals it names"
+                + " are modified by the number it carries, whatever the reason. This one"
+                + " applies to " + scope + " and modifies the standing by " + points
+                + ", and the engine does not yet apply a standings adjustment, so the tournament"
+                + " would be ranked without it. A blank-type record 299 of 0.0 points is"
+                + " accepted, because it changes nothing."
+            )
+            self.put_status(401, message)
+            raise GacruxInputError(message)
+        if fired is None:
+            says = (
+                what.capitalize() + " " + str(number) + " cannot be checked against it:"
+                + ' "' + att["att"] + '" in column 5 is not one of the result codes a 001'
+                + " record uses, so there is no result for the assignment to apply to."
+            )
+        else:
+            (letter, rounds, declared, current) = fired
+            says = (
+                what.capitalize() + " " + str(number) + " has result " + letter + " in "
+                + self.describe_rounds(rounds) + ", which the record makes worth "
+                + str(declared) + " where the score system and the results make it worth "
+                + str(current)
+                + ", so the tournament would be scored by rules the file did not ask for."
+            )
+        message = (
+            "Record 299 assigns abnormal points to " + scope + ", and the engine does not"
+            + " yet apply an abnormal assignment scoped to a round or to a competitor. "
+            + says
+            + " Only a record 299 that applies to every round and every competitor is"
+            + " supported: leave the round and the pairing numbers out, and the record"
+            + " declares what an abnormal result is worth for the whole tournament."
+        )
+        self.put_status(401, message)
+        raise GacruxInputError(message)
+
+    def check_abnormal_number(self, tournament, att, number):
+        """A record 299 pairing number has to name somebody, under either reading."""
+        if self.abnormal_reading(tournament, number) is not None:
+            return
+        players = sorted(self.pcompetitors.keys())
+        teams = sorted((self.tcompetitors if len(self.tcompetitors) > 0 else self.bcompetitors).keys())
+        if not (tournament["teamTournament"] and len(teams) > 0 and len(players) > 0):
+            # One vocabulary, so this is the ordinary complaint every record's pairing
+            # numbers get, in the words check_pairing_number writes for all of them.
+            self.check_competitor(tournament, "299", number)
+            return
+        message = (
+            "Record 299 names " + str(number) + ", which is neither a team nor a player:"
+            + " the tournament has " + self.describe_competitors(teams, "team")
+            + " and " + self.describe_competitors(players, "player")
+        )
+        self.put_status(401, message)
+        raise GacruxInputError(message)
+
+    def describe_competitors(self, numbers, what):
+        return (str(len(numbers)) + " " + what + "s ("
+                + str(numbers[0]) + " - " + str(numbers[-1]) + ")")
+
+    def describe_rounds(self, rounds):
+        """Name a set of round numbers the way a message should read them."""
+        rounds = sorted(rounds)
+        if len(rounds) == 0:
+            return "the tournament, in which no round has a match between two teams"
+        if len(rounds) == 1:
+            return "round " + str(rounds[0])
+        if rounds == list(range(rounds[0], rounds[-1] + 1)):
+            return "rounds " + str(rounds[0]) + " - " + str(rounds[-1])
+        return "rounds " + ", ".join([str(rnd) for rnd in rounds])
 
 
     def update_team_score(self, tournament):

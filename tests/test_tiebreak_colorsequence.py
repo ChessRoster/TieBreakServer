@@ -52,9 +52,20 @@ def one_colour_all_the_way(rounds):
 
 @pytest.mark.parametrize("rounds", [9, 10, 15])
 def test_same_colour_in_every_game(rounds):
-    # COD is the colour difference (white games minus black games) and CSQ the colour
-    # sequence; both are well defined however lopsided the colours are. COP is derived
-    # from COD and must saturate rather than run off the end of its table.
+    """COD, COP and CSQ all stay well defined when every game had the same colour.
+
+    COD is the colour difference (white games minus black games) and CSQ the colour
+    sequence; both are well defined however lopsided the colours are. COP is derived
+    from COD and must saturate rather than run off the end of its table.
+
+    The COP assertions name the exact value rather than merely checking that the first
+    character is a colour. A weaker check ("scores[1][1][0] in 'wb'") accepts the
+    *inverted* answer -- it passes just as happily when a player who has had nothing but
+    White is told to prefer White again -- so it cannot hold the saturation direction.
+    A player on nothing but White has an absolute preference for Black ("b2"), and the
+    all-Black player the mirror ("w2"); see
+    test_long_colour_sequence_saturates_in_correct_direction for the table derivation.
+    """
     scores = compute(one_colour_all_the_way(rounds), ["COD", "COP", "CSQ"])
 
     assert scores[1][0] == rounds

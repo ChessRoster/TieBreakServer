@@ -83,6 +83,30 @@ class crosstable_fideteam(crosstable):
         return qdefs.IW.value
 
     """
+    assign_tpn - art. 1.1, the tournament pairing number
+
+    art. 1.1.1 - "each team must have a different TPN, from 1 to the number of teams".
+    art. 1.1.3 - "once defined, the TPN should not be modified (except as stated in
+    Articles 2.4 and 2.5 of the General Handling Rules for Swiss Tournaments), unless the
+    Chief Arbiter decides otherwise".
+
+    So the number is the team's own place in the ranking order of the whole field, and not
+    the running count over the teams that are ready to be paired that the base class keeps
+    for the individual systems: a team that is absent must keep its own number and must not
+    hand it down to the team behind it. Six articles read the number back - 3.4.4, 3.5.3,
+    3.5.4, 3.6.1, 3.6.2, 4.2.3 and 4.3.1 - and 4.3.1 reads its parity, so one absent team
+    would otherwise reverse the colours of every team below it.
+
+    In a field where every team is present the two numberings are the same value, which is
+    why only an absence ever tells them apart.
+    """
+
+    def assign_tpn(self, competitors, size):
+        rr = sorted(competitors, key=lambda s: (s[self.rank]))
+        for i in range(1, size):
+            rr[i]["tpn"] = i
+
+    """
     color_preference - art. 1.7
 
     cop is the colour, then the strength:
@@ -91,6 +115,20 @@ class crosstable_fideteam(crosstable):
         "nc"        - no colour preference
     Type A knows no mild preference, so under type A the strength is always 2, and
     art. 2.3.6 [C9] - which is type B only - is inert.
+
+    Art. 1.7.2.1 and art. 1.7.2.5 conflict on one position, and the order the clauses are
+    tested in below is the answer this engine gives. A team whose colour difference is 0
+    and whose last two played matches were Black meets both "strong preference for White
+    if ... CD 0 or -1 and Black in the last two played matches" (1.7.2.1) and "no (Type B)
+    preference ... when CD is zero when pairing for the last round" (1.7.2.5) when the
+    last round is being paired. The strong preference of 1.7.2.1 is granted, because
+    1.7.2.3 and 1.7.2.4 already carry the last round as an exception inside their own
+    CD-zero cases, which makes 1.7.2.5 read as a closing restatement of that exception
+    rather than as an override of the two clauses that do not carry it - and because the
+    other reading would let a team that has just played two Blacks take a third one in the
+    last round. The question is open with the FIDE Systems of Pairings and Programs
+    commission; test_art_1_7_2_5_final_round_cd_zero_after_two_blacks records the decision
+    and is the test to change if it is answered the other way.
 
     cod and csq are the colour difference (art. 1.6.2) and the colour sequence (art. 1.6.1)
     of the team, and both are built from played matches only: art. 3.4 of the General
@@ -160,13 +198,18 @@ class crosstable_fideteam(crosstable):
     """
     update_edge - the quality criteria of art. 2.3 that a single pair can carry
 
-    [C4] and [C5] (art. 2.3.1 and 2.3.2) are decided when the set of upfloaters is
-    chosen (art. 3.5), and [C6] (art. 2.3.3) is a property of that set as well, not of a
-    pair. They are computed here all the same, so that the quality vector of a bracket -
-    which pairingchecker prints and compares - reports them.
+    [C4] and [C5] (art. 2.3.1 and 2.3.2) are decided when the set of upfloaters is chosen
+    (art. 3.5), but they can be read off a pair all the same - the upfloaters a pair holds
+    and the score difference between its teams - and are computed here, so that the
+    quality vector of a bracket, which pairingchecker prints and compares, reports them.
+
+    [C6] (art. 2.3.3) cannot: it is a property of the whole set of upfloaters and of the
+    scoregroup the bracket leaves behind, so no pair carries any of it. It stays zero here
+    and pairing_fideteam.pair_bracket writes the bracket's value over it.
 
     In a bracket, a team of the top-scoregroup is a resident and every other team is an
-    upfloater (art. 1.3.2), so "b is an upfloater" is "b has a lower score level than a".
+    upfloater (art. 1.3.2), so a team is an upfloater when its score level is below the
+    score level of the bracket.
     """
 
     def update_edge(self, edge):
@@ -191,9 +234,15 @@ class crosstable_fideteam(crosstable):
             (a, b) = (b, a)
         psd = a["scorelevel"] - b["scorelevel"]
         lasttworounds = self.rnd > self.numrounds - 2
+        # [C4] art. 2.3.1 - "minimise the number of upfloaters". The criterion counts
+        # teams, so a pair is worth the number of ITS teams that are upfloaters: none, one
+        # or two. A team of the bracket is an upfloater when its score is below the score
+        # of the bracket (art. 1.3.2) - which is not the same test as "lower than the
+        # other team of the pair", and differs from it in a pair of two upfloaters.
+        numupfloaters = len([team for team in (a, b) if team["scorelevel"] < self.scorelevel])
+        q[QC4] = numupfloaters
         if psd > 0:
             # b is an upfloater, and art. 1.5 makes both teams of this pair floaters.
-            q[QC4] = 1                                  # [C4] art. 2.3.1
             q[QC5][maxpsd - psd] = 1                    # [C5] art. 2.3.2
             if not lasttworounds:
                 # [C7] art. 2.3.4 - an upfloater that was a floater in the previous round
@@ -228,7 +277,12 @@ class crosstable_fideteam(crosstable):
         the bottom members of the identifier                          (art. 3.6.2)
 
     bsn is the position of a team in the bracket, the teams taken in TPN order. The team
-    with the smaller bsn in a pair is the top member of the pair (art. 3.6.1).
+    with the smaller bsn in a pair is the top member of the pair (art. 3.6.1). The map is
+    built here, out of the TPNs of the teams that were handed in, rather than read off the
+    order they arrive in: the callers order a bracket by score first (get_edges needs
+    that), and residents therefore precede upfloaters whatever their TPNs are, which is
+    not the order art. 3.6 reads a bracket in. Deriving bsn here leaves the two ends
+    nothing to disagree about.
 
     The identifier holds all the top members before the first bottom member, so a pairing
     that makes a low-TPN team a bottom member is worse than any pairing that does not,
@@ -241,7 +295,11 @@ class crosstable_fideteam(crosstable):
     """
 
     def update_bracket(self, scorelevel, nodes, edges):
-        self.bsn = bsn = {node["cid"]: i + 1 for i, node in enumerate(nodes)}
+        # art. 3.6.1 - the teams of the bracket, taken in TPN order
+        self.bsn = bsn = {
+            node["cid"]: i + 1
+            for i, node in enumerate(sorted(nodes, key=lambda node: node["tpn"]))
+        }
         self.B = B = len(nodes)
         base = B + 1
         self.weight = weight = {qd.name: 0 for qd in qdefs}

@@ -40,6 +40,107 @@ from errors import GacruxInputError, GacruxInvariantError, GacruxNoLegalPairing
 from pairing import pairing
 
 
+# The three colour models of art. 1.7: "Type A colour preferences are used unless the
+# rules of the team competition specify Type B, or no colour preferences at all."
+TYPE_A = "typea"          # art. 1.7.1, the default
+TYPE_B = "typeb"          # art. 1.7.2
+NO_COLOUR = "nocolor"     # art. 1.7, no colour preferences at all
+
+# The tokens a pairing system can carry to name one of them. "-m fideteam-typeb" writes
+# "typeb"; the record 192 table of trf2json writes "team_typeb".
+COLOUR_MODEL_TOKENS = {
+    "typea": TYPE_A, "team_typea": TYPE_A,
+    "typeb": TYPE_B, "team_typeb": TYPE_B,
+    "nocolor": NO_COLOUR, "team_nocolor": NO_COLOUR,
+}
+
+# The tokens of a record 192 team code that name one. The code vocabulary has only two:
+# there is no TYPEC to write, so no record 192 code states the third model of art. 1.7.
+# A FIDE_TEAM code without a TYPE token is read as the third model by trf2json's record
+# 192 table - which is where that reading belongs, and which that table documents as an
+# open question for the FIDE Systems of Pairings and Programs commission - and the table
+# writes the "nocolor" token of COLOUR_MODEL_TOKENS for it. It is not re-derived here.
+COLOUR_MODEL_CODES = {"TYPEA": TYPE_A, "TYPEB": TYPE_B}
+
+# The three states of art. 1.2. Art. 1.2.1 makes the rules of the competition state
+# "whether the other (secondary score) is used for colour allocation", which is a question
+# with two answers; art. 1.2.2 supplies a third state for the rules that do not answer it.
+SECONDARY_USED = "used"           # art. 1.2.1 - the competition states that it is used
+SECONDARY_UNUSED = "unused"       # art. 1.2.1 - the competition states that it is not
+SECONDARY_UNSTATED = "unstated"   # art. 1.2.2 - nothing was stated, so the default applies
+
+# The tokens that name a score in a pairing system: "-m fideteam-mp-gp" writes both.
+SCORE_TOKENS = ["mp", "gp", "match", "game"]
+
+
+def resolve_secondary_score(pairingsystem, scoresystem):
+    """art. 1.2 - whether the secondary score is used for the colour allocation of art.
+    4.2.2.
+
+    Art. 1.2.1 asks the rules of the competition two questions - which score is the
+    primary one, and whether the other one is used - and answering the first is not
+    answering the second. The three states are read like this:
+
+      * the command line names scores as tokens of the pairing system. Two of them
+        ("-m fideteam-mp-gp") state that the secondary score is used. One of them
+        ("-m fideteam-mp") names the primary score and says nothing about the other, so
+        it leaves whatever the file stated in place, and failing that art. 1.2.2.
+      * a record 192 code encodes both answers at once: FIDE_TEAM_TYPEA_MP_GP writes a
+        secondary score into the score system, and FIDE_TEAM_TYPEA_MP writes none - which
+        is the competition stating that the other score is not used. trf2json records
+        that second answer as scoreSystem["secondaryUsed"], separately from the scores
+        themselves, because commonmain overwrites "primary" from the -m option and the
+        score system alone can then no longer say which source named it. The recorded
+        answer is honoured whenever the command line named at most one score.
+      * a source that states neither leaves both unset, and art. 1.2.2 answers: "the
+        default is to use match points as the primary score and game points for colour
+        allocation".
+    """
+    scores = [arg for arg in pairingsystem if arg in SCORE_TOKENS]
+    if len(scores) > 1:
+        return SECONDARY_USED
+    if "secondaryUsed" in scoresystem:
+        return SECONDARY_USED if scoresystem["secondaryUsed"] else SECONDARY_UNUSED
+    if "secondary" in scoresystem:
+        return SECONDARY_USED
+    if len(scores) > 0:
+        return SECONDARY_UNSTATED
+    if "primary" in scoresystem:
+        return SECONDARY_UNUSED
+    return SECONDARY_UNSTATED
+
+
+def resolve_colour_model(pairingsystem, typeoftournament):
+    """art. 1.7 - which of the three colour models the rules of the competition state.
+
+    The rules reach the engine from two places, and this is the precedence between them:
+
+      1. a model named in the pairing system wins. Both ways of stating a model arrive
+         here - the -m option of the command line replaces the pairing system outright,
+         and trf2json's record 192 table writes the model into it as well - so a caller
+         that named a model has named it here, whichever route it took.
+      2. the record 192 code of the file is read only when the pairing system names no
+         model at all, which is what -m fideteam leaves behind. The code names two of the
+         three models and no more (see COLOUR_MODEL_CODES).
+      3. failing both, art. 1.7's own default: "type A colour preferences are used unless
+         the rules of the team competition specify Type B, or no colour preferences at
+         all".
+
+    One model answers both of the questions the crosstable asks - whether the preferences
+    are the type B ones, and whether there are preferences at all - so the two cannot come
+    out of different sources and leave a model half-applied.
+    """
+    for token in pairingsystem:
+        if token in COLOUR_MODEL_TOKENS:
+            return COLOUR_MODEL_TOKENS[token]
+    code = typeoftournament.upper().split("_")
+    if code[:2] == ["FIDE", "TEAM"]:
+        for token in code[2:]:
+            if token in COLOUR_MODEL_CODES:
+                return COLOUR_MODEL_CODES[token]
+    return TYPE_A
+
+
 class pairing_fideteam(pairing):
 
     FIDETEAM_RULES = {
@@ -57,18 +158,20 @@ class pairing_fideteam(pairing):
 
         # art. 1.7 - type A colour preferences, unless the rules of the competition ask
         # for type B, or for no colour preferences at all. Record 192 states it
-        # (FIDE_TEAM_TYPEB_MP_GP and friends), and so does -m fideteam-typeb.
-        self.typeb = "typeb" in pairingsystem or "team_typeb" in pairingsystem or "TYPEB" in typeoftournament
-        self.usecolor = "nocolor" not in pairingsystem
+        # (FIDE_TEAM_TYPEB_MP_GP and friends), and so does -m fideteam-typeb. The one
+        # model answers both of the questions the crosstable asks.
+        self.colourmodel = resolve_colour_model(pairingsystem, typeoftournament)
+        self.typeb = self.colourmodel == TYPE_B
+        self.usecolor = self.colourmodel != NO_COLOUR
 
         # art. 1.2 - the rules of the competition state which of match points and game
         # points is the primary score, and whether the other one is used for the colour
-        # allocation of art. 4.2.2. Record 192 encodes both: FIDE_TEAM_TYPEA_MP_GP names
-        # a secondary score, FIDE_TEAM_TYPEA_MP does not. Art. 1.2.2 - when nothing is
-        # said, match points are the score and game points are used for the colours.
+        # allocation of art. 4.2.2. Only a competition that stated the other score is NOT
+        # used switches art. 4.2.2 off; a competition that said nothing about it gets the
+        # art. 1.2.2 default, which uses it.
         # (The primary score itself is read by crosstable.compute_tiebreak.)
-        scores = [arg for arg in pairingsystem if arg in ["mp", "gp", "match", "game"]]
-        self.secondary = "secondary" in scoresystem or len(scores) > 1 or "primary" not in scoresystem
+        self.secondaryscore = resolve_secondary_score(pairingsystem, scoresystem)
+        self.secondary = self.secondaryscore != SECONDARY_UNUSED
 
         # C.04.7 art. 1.4.4 - the Baku acceleration cannot be used when game points are
         # the primary score.
@@ -80,6 +183,13 @@ class pairing_fideteam(pairing):
                     + " but an acceleration cannot be used with game points as the primary"
                     + " score (see C.04.7 art. 1.4.4)"
                 )
+
+        # [C1] art. 2.1.1 - "two participants shall not play against each other more than
+        # once". The criterion is absolute and the team system has no double-round
+        # variant, so the maxMeets dial of the base class - which -K and a "double" in the
+        # method list turn up for the Dutch engine - is pinned here. A round that then has
+        # no legal pairing reports itself through GacruxNoLegalPairing (art. 3.3.3).
+        self.nummeets = 1
 
         # art. 2.3.4 [C7] and art. 2.3.7 [C10] do not apply in the last two rounds.
         self.lasttworounds = rnd > self.numrounds - 2
@@ -96,40 +206,6 @@ class pairing_fideteam(pairing):
         # sets of upfloaters (art. 3.5) and tests each one of them for [C3] on its own,
         # so there is nothing to precompute.
         return [{} for _ in range(self.levels)]
-
-    def compute_degenerate_pairing(self):
-        """Pair the maximum number of teams when no complete pairing exists."""
-        self.checkonly = False
-        self.reportlevel = 0
-        self.crosstable = self.get_crosstable(self.experimental, False, self.verbose)
-        competitors, opponents = self.crosstable.init_engine(
-            self.tournament, self.rnd, self.nummeets, self.topcolor, self.rank
-        )
-        self.competitors = competitors
-        self.opponents = opponents
-        nodes = self.list_nodes(competitors)
-        edges = self.list_edges(opponents)
-
-        graph = nx.Graph()
-        graph.add_weighted_edges_from((edge["ca"], edge["cb"], 0) for edge in edges)
-        matched = sorted(
-            (a, b) if a < b else (b, a)
-            for a, b in nx.min_weight_matching(graph)
-        )
-
-        pairs = []
-        seated = set()
-        for a, b in matched:
-            edge = opponents[a][b]
-            self.update_color(edge)
-            edge["board"] = len(pairs) + 1
-            pairs.append(edge)
-            seated.update((a, b))
-        for node in nodes:
-            cid = node["cid"]
-            if cid != 0 and cid not in seated:
-                pairs.append({"board": len(pairs) + 1, "w": cid, "b": 0})
-        return pairs
 
     """
     can_be_paired - [C3] art. 2.2.1, the completion criterion
@@ -263,9 +339,18 @@ class pairing_fideteam(pairing):
         if self.checkonly:
             (upfloaters, pairs) = self.analyse_bracket(scorelevel, nodes, edges)
         else:
-            (upfloaters, pairs, c6) = self.select_upfloaters(scorelevel, residents, nodes, edges)
+            (upfloaters, pairs) = self.select_upfloaters(scorelevel, residents, nodes, edges)
 
         bracketnodes = self.sort_nodes(residents + upfloaters)
+        # [C6] art. 2.3.3 is a property of the bracket's set of upfloaters and not of any
+        # one pair, so it does not fall out of compute_weight the way the other criteria
+        # do and has to be asked for here. It is asked for on both paths, from the same
+        # function and the same decomposition: pairingchecker reads the first criterion on
+        # which the two sides differ as the reason their pairings differ, and a criterion
+        # that only one side measures would report a difference on every bracket.
+        cids = [node["cid"] for node in bracketnodes]
+        (restnodes, restedges) = self.remove_nodes(nodes, edges, cids)
+        c6 = self.check_c6(scorelevel, restnodes, restedges)
         bracket = {
             "scorelevel": scorelevel,
             "competitors": [node["cid"] for node in bracketnodes],
@@ -274,11 +359,19 @@ class pairing_fideteam(pairing):
             "downfloaters": [],        # C.04.6 knows no downfloaters
             "remaining": [],
             "quality": self.crosstable.compute_weight(pairs, None),
-            "bsne": {node["cid"]: i + 1 for i, node in enumerate(bracketnodes)},
-            "pab": scorelevel == self.pablevel,
+            # art. 3.6.1 - the position of a team in the bracket, the teams in TPN order,
+            # the same map crosstable_fideteam.update_bracket paired the bracket with.
+            "bsne": {
+                node["cid"]: i + 1
+                for i, node in enumerate(sorted(bracketnodes, key=lambda node: node["tpn"]))
+            },
+            # art. 1.4 and art. 3.3.2 - the pairing-allocated-bye is assigned before the
+            # brackets are paired and is a bracket of its own (find_pab), so no scoregroup
+            # bracket is ever the bye - not even the one the byed team came from, which
+            # pairs the teams that are left in it like any other.
+            "pab": False,
         }
-        if not self.checkonly:
-            bracket["quality"][QC6] = 0 if c6 else 1
+        bracket["quality"][QC6] = 0 if c6 else 1
 
         for pair in pairs:
             self.update_color(pair)
@@ -370,12 +463,12 @@ class pairing_fideteam(pairing):
                     c7 = self.count_c7(upfloaters)
                     key = (0 if c6 else 1, c7, index)
                     if best is None or key < best[0]:
-                        best = (key, upfloaters, pairs, c6)
+                        best = (key, upfloaters, pairs)
                     if key[0] == 0 and key[1] == 0:
                         break                             # art. 3.5.5, the first such set
                 if best is not None:
-                    (key, upfloaters, pairs, c6) = best
-                    return (upfloaters, pairs, c6)
+                    (key, upfloaters, pairs) = best
+                    return (upfloaters, pairs)
         # art. 3.3.3 - if it is impossible to complete a round-pairing, the Chief Arbiter
         # shall decide what to do.
         raise GacruxNoLegalPairing(
@@ -411,20 +504,38 @@ class pairing_fideteam(pairing):
     example of the regulation - 2, 6, 8 with 3 points and 1, 3, 5 with 2.5, two
     upfloaters of 3 points and one of 2.5 - gives
         {2,6,1} < {2,6,3} < {2,6,5} < {2,8,1} < ... < {6,8,5}
+
+    The sets are produced one at a time, in that order, and never collected. Art. 3.5.5 is
+    a "first that applies" rule and its caller stops at the first set that complies, so
+    the sets after it are work nobody asked for: a bracket taking ten upfloaters out of a
+    scoregroup of twenty has 184 756 of them, each costing a matching to test.
+
+    The order is the lexicographic one because it is built that way. The levels are taken
+    in descending score, and within each level the candidates in ascending TPN, so the
+    outermost loop varies the slowest-moving part of the identifier and the innermost the
+    fastest - which is what a lexicographic order is.
     """
 
     def list_upfloaters(self, lower, profile):
         bylevel = {}
         for node in lower:
             bylevel.setdefault(node["scorelevel"], []).append(node)
-        sets = [[]]
-        for level in sorted(set(profile), reverse=True):          # 3.5.3 descending score
-            newsets = []
-            for chosen in combinations(bylevel[level], profile.count(level)):   # ascending TPN
-                for upfloaters in sets:
-                    newsets.append(upfloaters + list(chosen))
-            sets = newsets
-        return sorted(sets, key=lambda s: [node[self.rank] for node in s])      # 3.5.4
+        levels = sorted(set(profile), reverse=True)               # 3.5.3 descending score
+        candidates = [
+            sorted(bylevel[level], key=lambda node: node[self.rank])   # 3.5.3 ascending TPN
+            for level in levels
+        ]
+        counts = [profile.count(level) for level in levels]
+
+        def sets_from(level):                                     # 3.5.4
+            if level == len(levels):
+                yield []
+                return
+            for chosen in combinations(candidates[level], counts[level]):
+                for rest in sets_from(level + 1):
+                    yield list(chosen) + rest
+
+        return sets_from(0)
 
     """
     check_c6 - [C6] art. 2.3.3
@@ -510,6 +621,12 @@ class pairing_fideteam(pairing):
     General Handling Rules is left to the rules of the competition. The matches are
     ordered the way the Dutch engine orders its games - by the higher score of the pair,
     then by the sum of the scores, then by the lower TPN - and the bye comes last.
+
+    The scores are the pairing scores, which is what C.04.7 art. 1.5 asks for: the pairing
+    score is "used to define scoregroups, sort them internally, and sort boards per
+    Article 3.6 of the General Handling Rules". The tie-break is the TPN of art. 1.1.1 -
+    the place of the team in the field - and not the competitor id of the file, which is a
+    different number as soon as the field is paired on its rank order.
     """
 
     def update_board(self, roundpairing):
@@ -519,13 +636,15 @@ class pairing_fideteam(pairing):
             for pair in bracket["pairs"]:
                 (w, b) = (pair["w"], pair["b"])
                 (ws, bs) = (cmp[w]["acc"], cmp[b]["acc"])
+                # art. 1.4 - the bye has no opponent, so it has one TPN and not two
+                tpns = [cmp[team]["tpn"] for team in (w, b) if team > 0]
                 pairs.append(
                     {
                         "pair": pair,
                         "ipab": w == 0 or b == 0,
                         "maxs": max(ws, bs),
                         "sums": ws + bs,
-                        "rank": w if w < b else b,
+                        "rank": min(tpns),
                     }
                 )
         board = 0
@@ -536,6 +655,62 @@ class pairing_fideteam(pairing):
             npair["board"] = board
             npairs.append(npair)
         return npairs
+
+    """
+    tpn_of_the_field - art. 1.1.1, "each team must have a different TPN, from 1 to the
+    number of teams"
+
+    The TPN of a team is its place in the ranking order of the whole field, absent teams
+    included (art. 1.1.3). crosstable.list_edges writes exactly these numbers onto the
+    competitors; they are needed here before the crosstable exists.
+    """
+
+    def tpn_of_the_field(self, tournament):
+        key = "rank" if self.rank == "rnk" else "cid"
+        order = sorted(tournament["competitors"], key=lambda team: team.get(key, 0))
+        return {team["cid"]: place for place, team in enumerate(order, start=1)}
+
+    """
+    get_topcolor - art. 4.1, the initial-colour
+
+    "The initial-colour is determined by drawing of lots before the pairing of the first
+    round." A file that records the draw states it and there is nothing to work out; a
+    file that does not has to have it read back out of the round that was played.
+
+    The base class reads it as the colour of the lowest-numbered player of the earliest
+    game, which is the rule of C.04.3. C.04.6 art. 4.3.1 stands in the way of that here:
+    "when both teams have yet to play a match: if the first-team has an odd TPN, give it
+    the initial-colour; otherwise, give it the opposite colour". A team's colour therefore
+    shows the initial-colour when its TPN is odd, and the negation of it when the TPN is
+    even.
+
+    In round 1 every team's primary and secondary score is zero, so art. 4.2.1 and 4.2.2
+    cannot separate the two teams of a match and art. 4.2.3 makes the first-team the one
+    with the smaller TPN. A match that was not played gives no colour at all (art. 1.6.1)
+    and a pairing-allocated-bye has none to give (art. 1.4), so neither is a witness. When
+    round 1 holds no played match, nothing in the file witnesses the lot.
+    """
+
+    def get_topcolor(self, tournament, defcolor):
+        if "topColor" in tournament:
+            return tournament["topColor"].lower()
+        tpn = self.tpn_of_the_field(tournament)
+        played = [
+            match
+            for match in tournament.get("matchList", [])
+            if match.get("round") == 1 and match.get("played", False)
+            and match.get("white", 0) in tpn and match.get("black", 0) in tpn
+        ]
+        if len(played) == 0:
+            return self.draw_topcolor(defcolor)
+        # Every played match of round 1 witnesses the same lot. Take the one holding the
+        # smallest TPN, so that the answer does not depend on the order of the file.
+        match = min(played, key=lambda m: min(tpn[m["white"]], tpn[m["black"]]))
+        # art. 4.2.3 - the first-team of the match is the one with the smaller TPN
+        first = match["white"] if tpn[match["white"]] < tpn[match["black"]] else match["black"]
+        color = "w" if first == match["white"] else "b"
+        # art. 4.3.1 - an odd TPN was given the initial-colour, an even one its opposite
+        return color if tpn[first] % 2 == 1 else {"w": "b", "b": "w"}[color]
 
     """
     update_color / color_allocation - art. 4, the colour allocation rules
@@ -565,12 +740,28 @@ class pairing_fideteam(pairing):
         else:
             (c["w"], c["b"], c["colorrule"]) = (colres["w"], colres["b"], colres["colorrule"])
 
+    """
+    first_team - art. 4.2
+
+    The scores compared here are the standings scores, and not the pairing score of
+    C.04.7 art. 1.5. That article enumerates what the pairing score is for - it is "used
+    to define scoregroups, sort them internally, and sort boards per Article 3.6 of the
+    General Handling Rules" - and the colour allocation is not on the list. Art. 4.2.1 and
+    4.2.2 ask for the primary and the secondary score, and the virtual points of an
+    acceleration are not points a team scored.
+
+    (The Dutch engine makes the same choice in the same place - its E.4 and E.5 rank the
+    two players by score level, which is built from the pairing score, and its update_board
+    orders the boards by it. That is C.04.3 art. 5, a different text, and it is left as it
+    is.)
+    """
+
     def first_team(self, a, b):
         # art. 4.2 - a is the first-team?
-        if a["acc"] != b["acc"]:
-            return a["acc"] > b["acc"]                     # 4.2.1 the higher primary score
-        if self.secondary and a["acx"] != b["acx"]:
-            return a["acx"] > b["acx"]                     # 4.2.2 the higher secondary score
+        if a["pts"] != b["pts"]:
+            return a["pts"] > b["pts"]                     # 4.2.1 the higher primary score
+        if self.secondary and a["ptx"] != b["ptx"]:
+            return a["ptx"] > b["ptx"]                     # 4.2.2 the higher secondary score
         return a["tpn"] < b["tpn"]                         # 4.2.3 the smaller TPN
 
     def color_allocation(self, a, b):

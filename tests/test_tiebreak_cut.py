@@ -183,8 +183,8 @@ def test_cut_inside_the_number_of_games_is_unchanged():
     }
 
 
-def swiss_with_absences(round3):
-    # Swiss, five players, four rounds, dated into the March 2026 regulations. Player 2
+def swiss_with_absences(round3, startdate="2026-03-01"):
+    # Swiss, five players, four rounds, dated by startdate. Player 2
     # takes a half-point bye in round 2 and plays his round 3 as round3 says: "-" is a
     # forfeit loss and gives him a second VUR (art. 16.1.2), "0" is an ordinary loss and
     # leaves him with one. Nothing else changes, every score included.
@@ -200,9 +200,12 @@ def swiss_with_absences(round3):
     #     round 2  2.0 x 0.5 = 1.00   VUR, half-point bye
     #     round 3  2.5 x 0.0 = 0.00   VUR when forfeited, opponent 1 scored 4.0 when not
     #     round 4  1.5 x 1.0 = 1.50   played, opponent 4 scored 1.5
+    #
+    # Rounds 2 and 3 are the two the caps touch, so a startdate before 2026-03-01
+    # gives both of them player 2's own 2.5 instead. See the boundary test below.
     forfeited = round3 == "-"
     lines = ["012 Sonneborn-Berger cut with a requested absence", "022 Oslo", "032 NOR",
-             "042 2026-03-01", "052 2026-03-04", "062 5", "072 0", "092 Swiss System",
+             "042 " + startdate, "052 2026-03-04", "062 5", "072 0", "092 Swiss System",
              "XXR 4"]
     lines.append(player_line(1, "Winner, Wanda", 2400, "4.0",
                              [(4, "w", "1"), (3, "b", "1"),
@@ -265,3 +268,38 @@ def test_art_16_5_1_leaves_a_single_vur_cut_alone():
     assert compute(one_requested_absence(), ["SB/C2"], swiss=True)[2] == "1.50"
     assert cut_rounds(one_requested_absence(), "SB/C1", 2, swiss=True) == [2]
     assert cut_rounds(one_requested_absence(), "SB/C2", 2, swiss=True) == [2, 1]
+
+
+def test_art_16_4_caps_apply_from_the_start_date_of_the_2026_rules():
+    # Art. 16.4: "To calculate the participant's own tie-break, each of their unplayed
+    # rounds is evaluated as if the participant had played against a dummy [...] The
+    # dummy's score for the tie-break calculation is the participant's own score.
+    # However, it shall not exceed: 16.4.1 the scheduled opponent's adjusted score (see
+    # Article 16.3), for unplayed rounds of categories 16.2.2 and 16.2.4 (forfeits);
+    # 16.4.2 the points awarded for a draw multiplied by the number of rounds in the
+    # tournament, for all other unplayed rounds".
+    #
+    # Those caps arrived with the rules of 2026-03-01, and find_tmversion picks the rule
+    # set from the tournament's start date. The engine therefore has to give the same
+    # file two different answers either side of that date, which is what this pins.
+    #
+    # Player 2 scores 2.5 and there are four rounds, so under the 2026 rules the bye is
+    # capped at 0.5 * 4 = 2.0 and the forfeit keeps his own 2.5. Without the caps both
+    # dummies take his own 2.5, and the bye contributes 2.5 * 0.5 = 1.25 rather than
+    # 1.00. That is the whole of the difference: 3.25 against 3.00.
+    before = swiss_with_absences("-", "2026-02-28")
+    on_the_day = swiss_with_absences("-", "2026-03-01")
+
+    assert compute(before, ["SB"], swiss=True)[2] == "3.25"
+    assert compute(on_the_day, ["SB"], swiss=True)[2] == "3.00"
+
+    # The cuts move with the caps. Before the caps the two VURs share one dummy score, so
+    # the lowest-scoring VUR and the lowest-contribution VUR cannot come apart and the
+    # ordinary art. 14.1.1.d candidate wins both cuts.
+    assert compute(before, ["SB/C1"], swiss=True)[2] == "2.75"
+    assert compute(before, ["SB/C2"], swiss=True)[2] == "1.25"
+    assert cut_rounds(before, "SB/C1", 2, swiss=True) == [1]
+    assert cut_rounds(before, "SB/C2", 2, swiss=True) == [1, 4]
+
+    assert compute(on_the_day, ["SB/C1"], swiss=True)[2] == "2.50"
+    assert compute(on_the_day, ["SB/C2"], swiss=True)[2] == "1.00"

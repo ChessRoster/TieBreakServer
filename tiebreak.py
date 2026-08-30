@@ -13,14 +13,34 @@ from errors import GacruxInputError
 
 
 def _select_low_cut_game(games, ignore_vur_exception=False):
-    """Select the next value removed by a low cut under C.07 articles 14 and 16.5."""
+    """Select the next element removed by a low cut, under C.07 articles 14 and 16.5.
+
+    Two candidates, each chosen by a different measure.
+
+    The least significant value is chosen by the opponent's score, because art.
+    14.1.1.d defines it that way: "exclude the contribution (product) associated with
+    the opponent with the lowest score - if there is more than one such opponent,
+    exclude the lowest contribution associated with them". Score first, contribution
+    only to break a tie between equal-scoring opponents.
+
+    The VUR candidate is chosen by the contribution, because art. 16.5.1 asks for "the
+    lowest contribution coming from such rounds" and says nothing about the score of
+    the dummy the contribution came from. Contribution first, opponent score only to
+    break a tie: art. 16.5.1 notes that the two candidates are "the same element if the
+    least significant value comes from a VUR", so when several VURs are level on
+    contribution the one to take is the least significant of them, not an arbitrary one.
+    Ordering the tie by score is what makes that note hold.
+
+    Art. 16.5.1 then cuts "the higher of these two values", the VUR keeping the tie
+    because its contribution need only be "not lower than the least significant value".
+    """
     least_significant = min(games, key=lambda game: (game["score"], game["tbvalue"]))
     if ignore_vur_exception:
         return least_significant
 
     lowest_vur = min(
         (game for game in games if game["vur"]),
-        key=lambda game: game["tbvalue"],
+        key=lambda game: (game["tbvalue"], game["score"]),
         default=None,
     )
     if lowest_vur is not None and lowest_vur["tbvalue"] >= least_significant["tbvalue"]:

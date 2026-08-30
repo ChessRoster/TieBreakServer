@@ -175,6 +175,43 @@ def test_sonneborn_berger_vur_candidate_is_selected_by_contribution():
     assert sum(game["tbvalue"] for game in games if game is not cut_game) == Decimal("31.50")
 
 
+def test_art_16_5_1_breaks_a_tie_between_vurs_by_the_opponent_score():
+    # Three VURs level on contribution at 0.00, against dummies scoring 2.5, 1.5 and
+    # 2.5. Article 16.5.1 asks for "the lowest contribution coming from such rounds",
+    # which all three are, and notes that the candidates are "the same element if the
+    # least significant value comes from a VUR". Here they are: round 2 is the least
+    # significant value under 14.1.1.d, its dummy scoring the lowest of everything on
+    # the list, and it is a VUR. So round 2 is the element to cut, not round 1.
+    #
+    # Cutting round 1 instead removes the same 0.00, so a single cut cannot tell the
+    # two apart - it leaves round 2 in the list, and the next cut then finds a least
+    # significant value of 0.00 rather than round 5's 1.00. That is the whole of the
+    # difference, and it only shows from the second cut on.
+    games = [
+        {"vur": True, "score": Decimal("2.5"), "tbvalue": Decimal("0.00"), "rnd": 1},
+        {"vur": True, "score": Decimal("1.5"), "tbvalue": Decimal("0.00"), "rnd": 2},
+        {"vur": True, "score": Decimal("2.5"), "tbvalue": Decimal("0.00"), "rnd": 3},
+        {"vur": False, "score": Decimal("2.5"), "tbvalue": Decimal("2.50"), "rnd": 4},
+        {"vur": False, "score": Decimal("2.0"), "tbvalue": Decimal("1.00"), "rnd": 5},
+        {"vur": False, "score": Decimal("2.5"), "tbvalue": Decimal("1.25"), "rnd": 6},
+        {"vur": False, "score": Decimal("2.5"), "tbvalue": Decimal("1.25"), "rnd": 7},
+    ]
+    total = sum(game["tbvalue"] for game in games)
+    assert total == Decimal("6.00")
+
+    first = tiebreak._select_low_cut_game(games)
+    assert first["rnd"] == 2
+    assert total - first["tbvalue"] == Decimal("6.00")      # Cut-1: 6.00 - 0.00
+
+    # 16.5.2, on what is left. The least significant value is now round 5's 1.00, and
+    # the lowest contribution from a VUR is 0.00, which is lower - so the exception
+    # does not apply and the ordinary candidate goes.
+    games.remove(first)
+    second = tiebreak._select_low_cut_game(games)
+    assert second["rnd"] == 5
+    assert total - first["tbvalue"] - second["tbvalue"] == Decimal("5.00")   # Cut-2
+
+
 def test_equal_vur_contribution_is_cut_as_not_lower():
     # Article 16.5 says the VUR is cut when its contribution is "not lower" than
     # the ordinary candidate, so equality belongs to the VUR side of the comparison.
@@ -412,21 +449,21 @@ def test_the_2026_caps_change_this_tournament():
     assert golden(GOLDEN_ON).endswith("Check: False\n")
 
 
-def test_the_two_selectors_differ_on_one_competitor_of_the_fifteen():
-    # Under the 2026 rules the upstream selector and this branch's disagree, and this is
-    # the whole of it on a real tournament: one competitor, one column. Start number 4
-    # forfeited three rounds, so he is the only player here carrying more than one VUR
-    # whose second cut turns on how they are ordered.
-    assert changed_rows(golden(GOLDEN_ON_UPSTREAM), golden(GOLDEN_ON)) == {"4"}
-    assert "4\t12\t2.5\t6.00\t6.00\t5.00" in golden(GOLDEN_ON_UPSTREAM)
-    assert "4\t12\t2.5\t6.00\t6.00\t6.00" in golden(GOLDEN_ON)
+def test_the_two_selectors_agree_on_this_tournament():
+    # They did not always. Before the art. 16.5.1 tie-break was corrected, this branch
+    # gave start number 4 an SB/C2 of 6.00 where upstream gave 5.00 - the whole of the
+    # difference on this file, and upstream was right. It is now byte-identical.
+    #
+    # The disagreement this branch does still have with upstream is confined to the
+    # constructed tournament earlier in this file, where a half-point bye and a forfeit
+    # loss take different dummy scores and the two candidates genuinely come apart.
+    # Keeping the upstream golden pins that: reintroduce the tie-break bug and this
+    # fails, naming the competitor.
+    assert golden(GOLDEN_ON) == golden(GOLDEN_ON_UPSTREAM)
+    assert changed_rows(golden(GOLDEN_ON_UPSTREAM), golden(GOLDEN_ON)) == set()
+    assert "4\t12\t2.5\t6.00\t6.00\t5.00" in golden(GOLDEN_ON)
 
 
-@pytest.mark.xfail(strict=True, reason="_select_low_cut_game ranks VURs by contribution "
-                   "alone, so when several share the lowest contribution it takes the "
-                   "earliest round rather than the least significant element; art. 16.5.1 "
-                   "makes them the same element when the least significant value is "
-                   "itself a VUR")
 def test_art_16_5_1_ties_among_equal_vur_contributions_go_to_the_lowest_opponent_score():
     # Start number 4 forfeited rounds 1, 2 and 3, so all three are VURs contributing
     # 0.00, but art. 16.4.1 caps their dummy scores at the scheduled opponent's adjusted

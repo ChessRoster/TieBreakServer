@@ -150,6 +150,40 @@ Unreleased
   its roster length is not the number of boards in a match; a missing board
   count is now rejected clearly instead of silently using the squad size. The
   sequence must be unique, team-only, non-empty, and contain only W and B.
+- Corrected the colour-preference tie-break, which saturated onto the wrong half
+  of its table: a player who had White in every round of a 5, 6, 9, 10 or 15
+  round event was reported as preferring White, and the all-Black player
+  preferred Black.
+- Fixed an AttributeError when computing points over a player who withdrew
+  after the first round, caused by tie-break holding its own stale copies of two
+  scoring helpers.
+- The rules era is now chosen by parsing the tournament start date rather than
+  measuring it, so a padded 042 record no longer selects a different tie-break
+  version from an unpadded one, and an undated file no longer changes its
+  tie-breaks across local midnight or disagrees between machines. A date that
+  cannot be read takes the current rules.
+- Restored the message that asks for a 162 record when no score system adds the
+  results up to the points reported; it could not previously be reached.
+- Kept the time of day on a day-first date such as "01.03.2026 10:00", which was
+  dropped while the other accepted forms kept it. A round's start time and the
+  enrolment deadline are read through there.
+- Added tests for records 162, 202, 362 and XXZ, none of which any test
+  reached before, and recorded in the corpus README which records the fixtures
+  cannot carry and why.
+- The test-summary comment now fails the run when shard results are missing,
+  unreadable or contradictory, instead of reporting a green gate over a partial
+  matrix, and it works on pull requests from forks. Everything it takes from an
+  artifact a fork produced is escaped or collapsed onto one line, so a test id
+  carrying newlines can no longer forge a heading or raw HTML in the comment,
+  and the verdict it leads with comes from the workflow run rather than from
+  the artifact. Two shards that agree a test failed but captured different
+  messages are no longer reported as contradictory, and the expected Python
+  versions are read from the workflow matrix rather than pinned in the test.
+- Made the tie-break cut-selector test able to fail - it compared two identical
+  golden files and never called the engine - and made the two regeneration
+  tools safe to run: neither can now rewrite a checked-in baseline from a shard
+  of the corpus or from a truncated run, and the known-failures tool refuses to
+  write an unclassified entry unless told to.
 - Corrected the documented minimum Python version to 3.11.
 
 2026-07-10 1.9.56

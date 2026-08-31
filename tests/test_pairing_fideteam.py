@@ -2,9 +2,8 @@
 """
 FIDE C.04.6, the Swiss Team Pairing System.
 
-There is no second implementation of C.04.6 to check this one against - bbpPairings does
-not pair team tournaments, and no other engine implements the regulation - so these tests
-are the evidence that the engine follows it. Every one of them names the article it holds
+There is no second implementation of C.04.6 to check this one against - no other engine
+implements the regulation - so these tests are the evidence that the engine follows it. Every one of them names the article it holds
 the engine to, and constructs a position in which that article, and no other, decides.
 
 The tournaments are built by hand, in the structure the readers produce: a team

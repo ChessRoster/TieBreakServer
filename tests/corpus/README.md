@@ -84,9 +84,8 @@ appears, in the counts shown.
 
 ### What they do not cover
 
-No fixture carries these records. The engine's handling of each is held by unit
-tests under `tests/` instead - except for the last three, which nothing reaches
-at this point in the stack:
+No fixture carries these records, so the engine's handling of each is held by
+unit tests under `tests/` instead:
 
 | record | what it decides | a unit test covers it |
 |--------|-----------------|:---:|
@@ -96,9 +95,9 @@ at this point in the stack:
 | 330 | forfeited team matches | yes |
 | 300 | out-of-order pairings, which set board order | yes |
 | 352 | the board colour sequence of a team event | yes |
-| 362 | the team match-point score system | **no** |
-| 202 | the tie-breaks used to break a tie in the standings | **no** |
-| XXZ | competitors who will not meet | **no** |
+| 362 | the team match-point score system | yes |
+| 202 | the tie-breaks used to break a tie in the standings | yes |
+| XXZ | competitors who will not meet | yes |
 
 Record 260 appears in individual fixtures only. Eight result codes are absent as
 well - `W`, `D` and `L` (an unrated played result), `X` and `?` (which score as

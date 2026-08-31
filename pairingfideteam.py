@@ -56,10 +56,10 @@ COLOUR_MODEL_TOKENS = {
 
 # The tokens of a record 192 team code that name one. The code vocabulary has only two:
 # there is no TYPEC to write, so no record 192 code states the third model of art. 1.7.
-# A FIDE_TEAM code without a TYPE token is read as the third model by trf2json's record
-# 192 table - which is where that reading belongs, and which that table documents as an
-# open question for the FIDE Systems of Pairings and Programs commission - and the table
-# writes the "nocolor" token of COLOUR_MODEL_TOKENS for it. It is not re-derived here.
+# A FIDE_TEAM code without a TYPE token is resolved by trf2json's record-192 table,
+# which follows FIDE's Tournament Type Code Table: its score-only codes state the third
+# model, while plain FIDE_TEAM states the type A default. The table writes the resulting
+# token from COLOUR_MODEL_TOKENS, and it is not re-derived here.
 COLOUR_MODEL_CODES = {"TYPEA": TYPE_A, "TYPEB": TYPE_B}
 
 # The three states of art. 1.2. Art. 1.2.1 makes the rules of the competition state

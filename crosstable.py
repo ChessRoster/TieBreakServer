@@ -239,8 +239,8 @@ class crosstable:
     one this change answers. C.04.3 art. 1.1 does point at the same article 2 of the
     General Handling Rules, and the Dutch colour rules E.4 and E.5 read the number the same
     way art. 4.3.1 does - but moving it changes the colours of 475 individual records of
-    the corpus, so it needs its own evidence and its own change, weighed against
-    bbpPairings rather than decided as a side effect of the team system.
+    the corpus, so it needs its own evidence and its own change rather than being decided
+    as a side effect of the team system.
     """
 
     def assign_tpn(self, competitors, size):

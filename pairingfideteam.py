@@ -149,6 +149,22 @@ class pairing_fideteam(pairing):
 
     # constructor function
     def __init__(self, tournament, rnd, params):
+        # No article of C.04.6 asks for the number of boards, but the engine cannot give
+        # the pairing-allocated-bye its points without it: art. 1.4 awards the bye "as many
+        # match points and game points as are rewarded for a draw", and the game points of
+        # a drawn match are half a point per board, so tiebreak.solve_score and the same
+        # resolution in scoresystem multiply the "D*" game score of a bye by teamSize
+        # (art. 4.2.2 then reads the total as the secondary score). TRF26 record 352
+        # states the number of boards implicitly, as the length of its board-colour
+        # sequence; trf2json takes it from there and otherwise infers it from the played
+        # matches; a JSON caller supplies it as the teamSize field jsonscheme.py lists. A
+        # count of zero or less means none of those sources said, and it is refused by
+        # name rather than scoring every bye as nothing.
+        if tournament.get("teamSize", 0) <= 0:
+            raise GacruxInputError(
+                "team board count is unknown; declare the board colour sequence in "
+                "record 352 before pairing a TRF team tournament"
+            )
         super().__init__(tournament, rnd, params)
         # ``-r`` changes how the result is printed. It must not change the TPN that
         # C.04.6 art. 1.1 fixes for the competition: the TPN orders scoregroups,

@@ -316,11 +316,15 @@ class trf2json(chessjson.chessjson):
             else:
                 self.prepare_team_section_310(tournament)
                 self.update_board_number(tournament, "match", True)
-            if tournament["teamSize"] == 0 and len(tournament["gameList"]) > 0:
-                if len(tournament["matchList"]) == 0:
-                    self.put_status(401, "Error in trf-file, Minning 362 record for team tournament")
-     
-                tournament["teamSize"] = round(len(tournament["gameList"]) / len(tournament["matchList"]))
+            if tournament["teamSize"] == 0:
+                # The average games per match is the size when matches exist. If no
+                # matches exist, leave the size unknown: a record 310 roster is not a
+                # board count (the official example has four boards and five players).
+                # Pairing reports the missing record 352 explicitly when it needs this
+                # information.
+                matchlist = tournament["matchList"]
+                if matchlist:
+                    tournament["teamSize"] = round(len(tournament["gameList"]) / len(matchlist))
         else:
             self.prepare_player_section(tournament)
             self.update_board_number(tournament, "game", False)
@@ -725,7 +729,11 @@ class trf2json(chessjson.chessjson):
         trans = {"F": "W", "H": "D", "P": "P", "W": "W", "D": "D", "L": "L", "U": "U", "A": "A", "Z": "Z"}
         gameList = tournament["gameList"]
         for bye in self.byelist:
-            elemlist = [elem for elem in gameList if bye["round"] == elem["round"] and bye["competitor"] == elem["white"]]
+            elemlist = [
+                elem for elem in gameList
+                if bye["round"] == elem["round"]
+                and bye["competitor"] in (elem["white"], elem.get("black", 0))
+            ]
             if len(elemlist) == 0:
                 game = {
                     "id": 0, 
@@ -739,7 +747,8 @@ class trf2json(chessjson.chessjson):
                 self.append_result(gameList, game)
             else:
                 elem = elemlist[0]
-                if elem["wResult"] != bye["score"]:
+                side = "wResult" if bye["competitor"] == elem["white"] else "bResult"
+                if elem.get(side, "Z") != bye["score"]:
                     self.put_status(405, "Error in bye score, competitor " + str(bye["competitor"]))
 
     #    forfeited
@@ -1340,6 +1349,10 @@ class trf2json(chessjson.chessjson):
         return
 
     def parse_trf_pab(self, tournament, line):
+        if not tournament["teamTournament"]:
+            message = "Record 320 is only valid in a team tournament; this is an individual tournament"
+            self.put_status(401, message)
+            raise GacruxInputError(message)
         if self.pabrecordline is not None:
             # TRF-2026: "Pairing-Allocated-Bye (PAB) (one record per tournament)". A
             # second one would silently replace the first's points in the score system
@@ -1362,6 +1375,12 @@ class trf2json(chessjson.chessjson):
                 self.byelist.append(
                     {
                         "type": "P",
+                        # "P" is the score system's name for the points a pairing-allocated
+                        # bye is worth. parse_trf_bye writes the same two keys for records
+                        # 240 and 330, and the individual and team bye consumers rely on
+                        # that common shape.
+                        "wResult": "P",
+                        "score": "P",
                         "competitor": competitor,
                         "round": rnd,
                         "matchPoints": matchPoints,

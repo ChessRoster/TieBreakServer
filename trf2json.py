@@ -189,27 +189,23 @@ class trf2json(chessjson.chessjson):
             #   CUSTOM_TEAM_ROUNDROBIN         -             -        -
             #   CUSTOM_TEAM_KNOCKOUT           -             -        -
             #
-            # OPEN QUESTION for the maintainer, not a settled reading.
-            #   C.04.6 art. 1.7 says "Type A colour preferences are used unless the rules of
-            #   the team competition specify Type B, or no colour preferences at all". On a
-            #   plain reading of that, a code with no TYPE token specifies nothing and should
-            #   therefore fall to the type A default - which is what FIDE_TEAM and
-            #   FIDE_TEAM_BAKU do, and what FIDE_TEAM_MP_GP and its four siblings do not.
-            #   The table above reads the absence of a TYPE token in two different ways in
-            #   the same family, so as it stands the vocabulary contradicts art. 1.7 and
-            #   itself.
+            # The absence of a TYPE token is not silence, and the two readings of it in
+            # this table are not an inconsistency: FIDE's "Tournament Type Code Table (for
+            # TRF_CODE 192)" defines each code outright, and this table follows it row for
+            # row. FIDE_TEAM_MP_GP is published as "FIDE Team Pairing System, with no
+            # colour preferences, MP as primary score, and GP as secondary score", and so
+            # are its GP_MP, MP, GP and _BAKU siblings. FIDE_TEAM and FIDE_TEAM_BAKU are
+            # published as defaulting to FIDE_TEAM_TYPEA_MP_GP and
+            # FIDE_TEAM_TYPEA_MP_GP_BAKU. So a code carrying no TYPE token states the
+            # third model of art. 1.7 when it names its scores, and the type A default
+            # when it names nothing else - because the code table says so, not because
+            # this reader inferred it.
             #
-            #   Both readings are defensible. "No TYPE token means the art. 1.7 default"
-            #   follows the article. "FIDE_TEAM_MP_GP is the code a file writes when the
-            #   competition uses no colour preferences at all" gives the third model of art.
-            #   1.7 the only spelling it has, since there is no TYPEC token to write - and
-            #   that is why the mapping is what it is.
+            # That is also why there is no TYPEC token: the third model is spelled by the
+            # score-only codes, and needs no marker of its own.
             #
-            #   Deciding between them is a decision about the regulation, and it moves the
-            #   pairings of every existing FIDE_TEAM_MP_GP file, so it is not made here.
-            #   tests/test_trf_fideteam_colour_model.py freezes the table as it stands, so
-            #   whenever the decision is taken it is a one-line change with a failing test
-            #   against it rather than a silent drift.
+            # tests/test_trf_fideteam_colour_model.py holds the table to that mapping from
+            # the file through to the pairing.
             # ----------------------------------------------------------------------------
 
             "FIDE_TEAM_TYPEA_MP_GP"        : {"format": "swiss",        "teamTournament": True , "pairingSystem": ["fideteam", "team_typea"] },

@@ -507,10 +507,9 @@ def test_art_1_7_each_source_names_the_colour_model_on_its_own(model, mtoken, rt
     The record 192 code names only two of the three models: its vocabulary has TYPEA and
     TYPEB and no third token, so no code states "no colour preferences at all", and a
     FIDE_TEAM code with no TYPE token falls to the default art. 1.7 states in its own
-    first sentence. (trf2json's record 192 table reads such a code as the third model and
-    writes the "nocolor" token for it - and records that reading as an open question with
-    the FIDE Systems of Pairings and Programs commission. That decision belongs to the
-    table, and this resolver does not take it a second time.)
+    first sentence. (trf2json's record-192 table follows FIDE's Tournament Type Code
+    Table: a score-only code states the third model and writes the "nocolor" token. That
+    decision belongs to the table, and this resolver does not take it a second time.)
 
     Nothing else is exercised: the engines are built and their model read, without pairing
     a round, so no scoregroup, no upfloater and no colour allocation is involved.

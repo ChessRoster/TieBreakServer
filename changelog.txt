@@ -16,8 +16,44 @@ Unreleased
   models of article 1.7 - type A colour preferences, type B colour preferences,
   and no colour preferences at all - automatic TRF selection, and team-corpus
   coverage.
-- Enabled all 300 previously skipped team records, so every record in the
-  6,000-record corpus now executes in CI.
+- Routed all 1,000 team fixtures through the new engine and removed the 697
+  expected failures that represented the previously missing C.04.6 implementation;
+  every record in the 6,000-record corpus executes in CI.
+- Corrected seven faults in the C.04.6 pairing that change the pairing or the
+  colours a team tournament gets. The tournament pairing number is now the
+  team's fixed place in the field (articles 1.1.1 and 1.1.3) rather than a
+  running count that an absent team handed down, which had reversed the colours
+  of every team below an absence through article 4.3.1. A bracket is read in
+  tournament-pairing-number order when its pairing identifier is formed
+  (article 3.6.1), so heterogeneous brackets are no longer identified wrongly.
+  The first-team is decided on the standings score (article 4.2.1) instead of
+  the accelerated score, so virtual points no longer settle colours. The drawn
+  initial colour is recovered through article 4.3.1. Two teams can no longer be
+  made to meet twice by the maxMeets option, which article 2.1.1 [C1] does not
+  allow. Board order tie-breaks on the tournament pairing number, and the
+  colour model and the secondary score are each resolved from one place, so
+  naming a model on the command line and naming it in record 192 agree.
+  Naming the primary score on the command line (-m fideteam-mp) no longer
+  discards the file's answer on the secondary score: a FIDE_TEAM_TYPEA_MP file,
+  which states that game points are not used, keeps that answer and article
+  4.2.2 stays off. Only a command line naming both scores overrides it. In
+  check mode, a declared pairing-allocated bye given to a team that article
+  2.1.2 [C2] bars from it is flagged on the bye bracket of the analysis, naming
+  the team and the article.
+- Replaced the invented round the team engine produced when no legal pairing
+  existed. It used to pair as many teams as it could and hand a bye to every
+  team left over, which gives out byes article 1.4 has none to give and repeats
+  byes article 2.1.2 [C2] forbids. Such a round is now reported as unpairable,
+  which article 3.3.3 leaves to the Chief Arbiter to decide.
+- Corrected the C.04.6 [C7] and [C10] quality of a pair containing two
+  upfloaters. Both teams are below the score level of the bracket, so both must
+  be counted when they floated in the previous round, and each is the other
+  upfloater's opponent. The old edge quality counted neither and could let the
+  pairing identifier choose before [C10].
+- Enforced article 1.1.1 on record 310: team tournament pairing numbers must be
+  distinct and cover the complete range from 1 through the number of teams.
+  Duplicate, zero and gapped identifiers are now rejected at the record instead
+  of reaching array indexing or silently replacing a team.
 - Corrected Sonneborn-Berger cut modifiers to select a voluntary unplayed
   round by its contribution, and to break a tie between equal contributions
   by the opponent's score, as required by FIDE C.07 article 16.5. Affects

@@ -131,6 +131,14 @@ Unreleased
   pairing-allocated bye whose opponent never recorded the same game.
 - A TRF record the reader cannot parse is again reported as "Error in trf-file,
   line N" instead of failing later with a TypeError.
+- Enforced TRF26 record 320 as the team-only pairing-allocated-bye record the
+  format defines. A valid team record now reaches the match list, while an
+  individual file carrying record 320 is rejected with a message naming the
+  record instead of faulting later in the reader.
+- Required record 352's board-colour sequence before pairing the first round of
+  a team tournament. Record 310 lists the whole squad, including reserves, so
+  its roster length is not the number of boards in a match; a missing board
+  count is now rejected clearly instead of silently using the squad size.
 - Corrected the documented minimum Python version to 3.11.
 
 2026-07-10 1.9.56

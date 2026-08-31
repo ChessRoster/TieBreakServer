@@ -19,7 +19,7 @@ import pytest
 import pairingfideteam
 from crosstablefideteam import crosstable_fideteam
 from drawresult import drawresult
-from errors import GacruxNoLegalPairing
+from errors import GacruxInputError, GacruxNoLegalPairing
 from pairingfideteam import (
     NO_COLOUR,
     SECONDARY_UNSTATED,
@@ -385,7 +385,7 @@ def test_art_1_7_2_no_mild_preference_on_zero_in_the_last_round():
     assert preference(+1, "wbw", typeb=True, rnd=9, numrounds=9) == "b1"
 
 
-def test_art_1_7_2_5_final_round_cd_zero_after_two_blacks():
+def test_art_1_7_2_fifth_paragraph_final_round_cd_zero_after_two_blacks():
     """Art. 1.7.2.1 against art. 1.7.2.5 - the one position on which the two conflict.
     This test records the reading the engine takes; it is not a settled question.
 
@@ -1249,6 +1249,39 @@ def test_art_2_3_4_c7_does_not_apply_in_the_last_two_rounds():
     assert engine.competitors[2]["flt"] != 0
     top = engine.competitors[1]["scorelevel"]
     assert upfloaters(brackets, top) == [2]
+
+
+def test_art_2_3_4_c7_cannot_be_evaluated_without_a_round_count():
+    """[C7] art. 2.3.4 and [C10] art. 2.3.7 are defined in terms of "the last two rounds",
+    and a file that does not declare how many rounds it has cannot say which those are.
+
+    The same position with the round count only inferred: two rounds have been played,
+    record 142 is missing, and trf2json has raised numRounds to the last played round, 2,
+    marking it as not explicit. Pairing round 3 on that would treat it as past the end of
+    the event and switch [C7] off - the upfloater would be team 2, the previous-round
+    floater, on nothing but a guess. The engine refuses instead, naming the record and
+    the article; C.04.1 art. 1 has the number of rounds "declared beforehand".
+    """
+    tournament = c7_tournament(2)
+    tournament.tournament["numRoundsExplicit"] = False
+    with pytest.raises(GacruxInputError) as excinfo:
+        tournament.engine(3)
+    message = str(excinfo.value)
+    assert "142" in message
+    assert "2.3.4" in message
+    assert "-N" in message
+
+
+def test_art_2_3_4_c7_applies_when_record_142_says_the_event_continues():
+    """The control for the test above: the same two played rounds with a record 142 that
+    declares six, so round 3 is not one of the last two and [C7] keeps team 2 out of the
+    bracket."""
+    tournament = c7_tournament(6)
+    tournament.tournament["numRoundsExplicit"] = True
+    (engine, brackets) = tournament.brackets(3)
+    assert not engine.lasttworounds
+    top = engine.competitors[1]["scorelevel"]
+    assert upfloaters(brackets, top) == [3]
 
 
 def test_art_2_3_7_c10_minimise_the_upfloaters_opponents_that_floated():

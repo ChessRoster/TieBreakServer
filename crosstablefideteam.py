@@ -116,19 +116,42 @@ class crosstable_fideteam(crosstable):
     Type A knows no mild preference, so under type A the strength is always 2, and
     art. 2.3.6 [C9] - which is type B only - is inert.
 
-    Art. 1.7.2.1 and art. 1.7.2.5 conflict on one position, and the order the clauses are
-    tested in below is the answer this engine gives. A team whose colour difference is 0
-    and whose last two played matches were Black meets both "strong preference for White
-    if ... CD 0 or -1 and Black in the last two played matches" (1.7.2.1) and "no (Type B)
-    preference ... when CD is zero when pairing for the last round" (1.7.2.5) when the
-    last round is being paired. The strong preference of 1.7.2.1 is granted, because
-    1.7.2.3 and 1.7.2.4 already carry the last round as an exception inside their own
-    CD-zero cases, which makes 1.7.2.5 read as a closing restatement of that exception
-    rather than as an override of the two clauses that do not carry it - and because the
-    other reading would let a team that has just played two Blacks take a third one in the
-    last round. The question is open with the FIDE Systems of Pairings and Programs
-    commission; test_art_1_7_2_5_final_round_cd_zero_after_two_blacks records the decision
-    and is the test to change if it is answered the other way.
+    The first and the fifth paragraph of art. 1.7.2 both apply to one position, and the
+    order the clauses are tested in below is the answer this engine gives. (The regulation
+    does not number the paragraphs of art. 1.7.2; they are counted here.) A team whose
+    colour difference is 0 and whose last two played matches were Black satisfies both
+
+        first paragraph  strong preference for White "if its CD is less than -1, or,
+                         being its CD 0 or -1, the team had Black in the last two played
+                         matches"
+        fifth paragraph  no preference "when it has yet to play a match, or when its CD
+                         is zero when pairing for the last round"
+
+    when the last round is being paired, and the regulation does not rank them. It is not
+    a corner case: a team reaches it by playing White, White, Black, Black, and 343 of the
+    teams in the TRF corpus arrive there.
+
+    THE DECISION: the first paragraph controls, so the team is given a strong preference
+    for White.
+
+    Two things support it. The wording is the first: 1.7.2.3 and 1.7.2.4 carry the last
+    round as an exception INSIDE their own CD-zero cases ("if its CD is -1, or, if it is
+    zero and it is not the last round, ..."). If the fifth paragraph were a blanket
+    override for a colour difference of zero in the last round, those two carve-outs would
+    be dead text, because the fifth paragraph would already have covered them. Reading the
+    fifth paragraph as a closing restatement for the mild and never-played cases leaves
+    every clause doing work. The second is the consequence: the other reading gives no
+    preference at all, which lets a team that has just had two Blacks take a third one in
+    the final round.
+
+    TO REVERSE IT, if the FIDE Systems of Pairings and Programs commission clarifies that
+    1.7.2.5 governs: in color_preference below, the "cod == 0 ... csq[-2:] == 'bb'" half of
+    the first test and the "csq[-2:] == 'ww'" half of the second must not fire in the last
+    round under type B - guard each with "and (not self.typeb or self.rnd !=
+    self.numrounds)", so that a CD of zero in the last round falls through to the "nc"
+    at the end. Type A keeps both halves unguarded: art. 1.7.1 has no last-round clause
+    at all. test_art_1_7_2_fifth_paragraph_final_round_cd_zero_after_two_blacks asserts
+    the current reading and is the test to flip.
 
     cod and csq are the colour difference (art. 1.6.2) and the colour sequence (art. 1.6.1)
     of the team, and both are built from played matches only: art. 3.4 of the General

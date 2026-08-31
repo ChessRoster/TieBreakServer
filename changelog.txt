@@ -45,6 +45,16 @@ Unreleased
   team left over, which gives out byes article 1.4 has none to give and repeats
   byes article 2.1.2 [C2] forbids. Such a round is now reported as unpairable,
   which article 3.3.3 leaves to the Chief Arbiter to decide.
+- Refused a team tournament whose length is not declared within two rounds of
+  the end the reader inferred, for every colour model and in both modes.
+  Articles 2.3.4 [C7] and 2.3.7 [C10] apply "with the exception of the last two
+  rounds", and a file without record 142 does not say which rounds those are:
+  the reader infers the count from the last round played, so every round it was
+  asked for looked like one of the last two and the two criteria were switched
+  off on a guess. Pairing such a round, or checking the last two played rounds
+  of such a file, reports status 401 naming record 142 and the -N flag, which
+  lifts it; for a type B file the message also names article 1.7.2, whose
+  last-round clauses need the same answer. Earlier rounds are unaffected.
 - Corrected the C.04.6 [C7] and [C10] quality of a pair containing two
   upfloaters. Both teams are below the score level of the bracket, so both must
   be counted when they floated in the previous round, and each is the other

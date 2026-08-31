@@ -164,6 +164,50 @@ class pairing_fideteam(pairing):
         self.typeb = self.colourmodel == TYPE_B
         self.usecolor = self.colourmodel != NO_COLOUR
 
+        # Two criteria of every colour model, and three clauses of one of them, turn on
+        # where the end of the event is. Art. 2.3.4 [C7] and art. 2.3.7 [C10] apply "with
+        # the exception of the last two rounds"; art. 1.7.2 withholds the mild type B
+        # preference at a colour difference of zero "if it is not the last round" (third
+        # and fourth paragraph) and gives no preference at all "when its CD is zero when
+        # pairing for the last round" (fifth paragraph). The scheduled length of the event
+        # is not derivable from the results; only record 142 states it (C.04.1 art. 1: the
+        # number of rounds "is declared beforehand"), and when it is missing trf2json
+        # raises numRounds to the last round actually played and marks the count as not
+        # explicit, as commonmain marks -N explicit. On an inferred count every round the
+        # engine is asked for is within two of "the end", so [C7] and [C10] would be
+        # switched off on a guess and a previous-round floater upfloated where the
+        # criteria forbid it - a wrong pairing, produced in silence, from a file that never
+        # said how long the tournament is. The same holds for a check of the last two
+        # played rounds, which builds one engine per round. So the round is refused, for
+        # every colour model: the criteria are not colour rules and the no-colour model
+        # (art. 1.7) is as bound by them as type A and type B.
+        if not tournament.get("numRoundsExplicit", True) and rnd > self.numrounds - 2:
+            raise GacruxInputError(
+                "round " + str(rnd) + " of a team tournament whose length is not declared:"
+                + " the file has no record 142, so the " + str(self.numrounds) + " round(s)"
+                + " it accounts for are the rounds already played, and nothing says whether"
+                + " round " + str(rnd) + " is one of the last two. Arts. 2.3.4 [C7] and"
+                + " 2.3.7 [C10] of C.04.6 are switched off in the last two rounds and cannot"
+                + " be evaluated without that"
+                + (
+                    "; nor can art. 1.7.2, which decides three of its five type B colour"
+                    + " preferences on whether the round is the last one"
+                    if self.typeb else ""
+                )
+                + ". Give the scheduled number of rounds in a record 142, or with -N"
+            )
+        # A declared count that is shorter than the round being paired leaves the type B
+        # question open in the same way, whichever source declared it.
+        if self.typeb and rnd > self.numrounds:
+            raise GacruxInputError(
+                "this is a type B team tournament and round " + str(rnd) + " is being"
+                + " paired, but the file accounts for only " + str(self.numrounds)
+                + " round(s), so there is no way to tell whether this is the last one."
+                + " Art. 1.7.2 of C.04.6 decides three of its five colour preferences on"
+                + " that. Give the scheduled number of rounds in a record 142, or with -N,"
+                + " and check it is not shorter than the round being paired"
+            )
+
         # art. 1.2 - the rules of the competition state which of match points and game
         # points is the primary score, and whether the other one is used for the colour
         # allocation of art. 4.2.2. Only a competition that stated the other score is NOT

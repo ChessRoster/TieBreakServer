@@ -1446,9 +1446,13 @@ class trf2json(chessjson.chessjson):
                     {
                         "type": "P",
                         # "P" is the score system's name for the points a pairing-allocated
-                        # bye is worth. parse_trf_bye writes the same two keys for records
-                        # 240 and 330, and the individual and team bye consumers rely on
-                        # that common shape.
+                        # bye is worth, and the two keys below are what the one consumer of
+                        # this list reads. parse_trf_bye writes the same pair for records
+                        # 240 and 330; leaving them out here made every individual
+                        # tournament carrying a record 320 die in
+                        # update_individualbye_list with KeyError('score') -- outside the
+                        # handler that turns an unreadable record into "Error in trf-file,
+                        # line N", so it was reported as 510, a defect of the engine.
                         "wResult": "P",
                         "score": "P",
                         "competitor": competitor,

@@ -990,9 +990,10 @@ class ts2json(chessjson.chessjson):
             accDrounds = (numrounds + 1)//2
             accWrounds = (accDrounds + 1)//2
             for (res, start, stop) in [("W", 1, accWrounds), ("D", accWrounds+1, accDrounds)]:
+                gamepoints = tournament["scoreSystem"]["game"][res]
                 value = {
-                    "matchResult": res,
-                    "gameResult": res,
+                    "matchPoints": tournament["scoreSystem"]["match"].get(res, gamepoints),
+                    "gamePoints": gamepoints,
                     "firstRound": start,
                     "lastRound": stop,
                     "firstCompetitor": 1,
@@ -1000,7 +1001,7 @@ class ts2json(chessjson.chessjson):
                 }
                 tournament["accelerated"]["values"].append(value)
 
-    
+
 
 # ============ Module test ==============
 def dotest(name):
@@ -1022,9 +1023,7 @@ def module_test():
     dotest("nm_lag_19")
     dotest("nm_lag2022")
     dotest("test-half-point")
- 
-    
+
+
 if __name__ == "__main__":
     module_test()
-     
-    

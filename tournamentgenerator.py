@@ -267,9 +267,10 @@ class tournamentgenerator(commonmain):
             accrounds = [0, (rounds+3)//4, (rounds+1)//2 ]
             gscrounds = ["Z", "W", "D" ]
             for acc in [1,2]: 
+                result = gscrounds[acc]
                 value = {
-                "matchResult": gscrounds[acc],
-                "gameResult": gscrounds[acc],
+                "matchPoints": tournament["scoreSystem"]["match"][result],
+                "gamePoints": tournament["scoreSystem"]["game"][result],
                 "firstRound": accrounds[acc-1] + 1,
                 "lastRound": accrounds[acc],
                 "firstCompetitor": 1,

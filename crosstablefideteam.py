@@ -127,14 +127,25 @@ class crosstable_fideteam(crosstable):
         fifth paragraph  no preference "when it has yet to play a match, or when its CD
                          is zero when pairing for the last round"
 
-    when the last round is being paired, and the regulation does not rank them. It is not
-    a corner case: a team reaches it by playing White, White, Black, Black, and 343 of the
-    teams in the TRF corpus arrive there.
+    when the last round is being paired, and the regulation does not rank them. Take a
+    five-round event played under type B colours, and a team that comes into round 5 having
+    played White, White, Black, Black: its colour difference is zero and its last two
+    matches were Black, so the first paragraph gives it a strong preference for White, and
+    round 5 is the last round, so the fifth paragraph gives it no preference at all. It is
+    not a corner case - 343 of the teams in the TRF corpus arrive there.
 
     THE DECISION: the first paragraph controls, so the team is given a strong preference
     for White.
 
-    Two things support it. The wording is the first: 1.7.2.3 and 1.7.2.4 carry the last
+    The FIDE Technical Commission was asked, and its guidance is to take the clauses of
+    art. 1.7 in the order they are written: a team's colour preference is the first
+    definition that fits it. The first paragraph fits first, so the fifth is never reached,
+    and the team of the example is given its strong preference for White. The same guidance settles the
+    matching ambiguity in the Dutch system, art. 1.7.1 against art. 1.7.3 of C.04.3 - see
+    the head of crosstable_dutch.color_preference.
+
+    Two things in the article support the same reading. The wording is the first: the
+    third and the fourth paragraph carry the last
     round as an exception INSIDE their own CD-zero cases ("if its CD is -1, or, if it is
     zero and it is not the last round, ..."). If the fifth paragraph were a blanket
     override for a colour difference of zero in the last round, those two carve-outs would
@@ -144,8 +155,8 @@ class crosstable_fideteam(crosstable):
     preference at all, which lets a team that has just had two Blacks take a third one in
     the final round.
 
-    TO REVERSE IT, if the FIDE Systems of Pairings and Programs commission clarifies that
-    1.7.2.5 governs: in color_preference below, the "cod == 0 ... csq[-2:] == 'bb'" half of
+    TO REVERSE IT, if the commission ever settles the point the other way and the fifth
+    paragraph governs: in color_preference below, the "cod == 0 ... csq[-2:] == 'bb'" half of
     the first test and the "csq[-2:] == 'ww'" half of the second must not fire in the last
     round under type B - guard each with "and (not self.typeb or self.rnd !=
     self.numrounds)", so that a CD of zero in the last round falls through to the "nc"

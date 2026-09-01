@@ -386,45 +386,52 @@ def test_art_1_7_2_no_mild_preference_on_zero_in_the_last_round():
 
 
 def test_art_1_7_2_fifth_paragraph_final_round_cd_zero_after_two_blacks():
-    """Art. 1.7.2.1 against art. 1.7.2.5 - the one position on which the two conflict.
-    This test records the reading the engine takes; it is not a settled question.
+    """The first paragraph of art. 1.7.2 against its fifth - the one position on which the
+    two conflict. (The regulation does not number the paragraphs of art. 1.7.2; they are
+    counted here.) This test records the reading the engine takes, which the FIDE
+    Technical Commission has since confirmed.
 
-    Art. 1.7.2.1: "Strong preference for White if CD < -1, or (CD 0 or -1 and Black in the
-    last two played matches)."
-    Art. 1.7.2.5: "No (Type B) preference when the team has yet to play a match, or when
-    CD is zero when pairing for the last round."
+    First paragraph: "Strong preference for White if CD < -1, or (CD 0 or -1 and Black in
+    the last two played matches)."
+    Fifth paragraph: "No (Type B) preference when the team has yet to play a match, or
+    when CD is zero when pairing for the last round."
 
     A team that played W, W, B, B has a colour difference of 0 and Black in its last two
-    played matches, so art. 1.7.2.1 gives it a strong preference for White. Pair the last
-    round, and its colour difference is zero when pairing for the last round, so art.
-    1.7.2.5 gives it no preference at all. Both clauses fire, and they say opposite things.
+    played matches, so the first paragraph gives it a strong preference for White. Pair
+    the last round, and its colour difference is zero when pairing for the last round, so
+    the fifth paragraph gives it no preference at all. Both clauses fire, and they say
+    opposite things.
 
-    The engine follows art. 1.7.2.1 and gives the strong preference for White. The reason
-    is the shape of the article. Art. 1.7.2.3 and 1.7.2.4 - the mild preferences - carry
-    the last round as an exception INSIDE their own CD-zero cases ("CD zero, not the last
-    round, and Black in the last played match"), and 1.7.2.5 then restates that exclusion
-    as a closing summary of the cases that give nothing. Read that way it does not reach
-    back over 1.7.2.1 and 1.7.2.2, which have no such exception written into them; read
-    the other way, it overrides them, and a team that has just played two Blacks may be
-    given a third in the last round - which is the situation the strong preferences exist
-    to prevent, and which no other clause of art. 1.7 permits.
+    The engine follows the first paragraph and gives the strong preference for White. The
+    reason is the shape of the article. The third and the fourth paragraph - the mild
+    preferences - carry the last round as an exception INSIDE their own CD-zero cases ("CD
+    zero, not the last round, and Black in the last played match"), and the fifth then
+    restates that exclusion as a closing summary of the cases that give nothing. Read that
+    way it does not reach back over the first and the second paragraph, which have no such
+    exception written into them; read the other way, it overrides them, and a team that
+    has just played two Blacks may be given a third in the last round - which is the
+    situation the strong preferences exist to prevent, and which no other clause of art.
+    1.7 permits.
 
-    The alternative reading is defensible: 1.7.2.5 is worded flatly, and its second limb
-    would then be pure repetition of 1.7.2.3 and 1.7.2.4. The question is open with the
-    FIDE Systems of Pairings and Programs commission, and if it is answered the other way
-    this test is the one line to change, with the comment at the head of
-    crosstable_fideteam.color_preference.
+    The alternative reading is defensible: the fifth paragraph is worded flatly, and its
+    second limb would then be pure repetition of the third and the fourth. The FIDE
+    Technical Commission was asked and gave the first reading: the clauses of art. 1.7 are
+    taken in the order they are written, and a team's colour preference is the first
+    definition that fits it, so a team that satisfies the first paragraph never reaches
+    the fifth. The comment at the head of crosstable_fideteam.color_preference records
+    that, and if the commission ever settles the point the other way this test is the one
+    line to change.
 
     The comparisons below pin the reading exactly: the same team one round earlier, where
-    the two articles agree, and a team whose CD is zero without two Blacks behind it,
-    where art. 1.7.2.1 does not fire and art. 1.7.2.5 alone decides - so the assertion
-    below is about the conflict and not about art. 1.7.2.5 in general.
+    the two paragraphs agree, and a team whose CD is zero without two Blacks behind it,
+    where the first paragraph does not fire and the fifth alone decides - so the assertion
+    below is about the conflict and not about the fifth paragraph in general.
     """
     assert preference(0, "wwbb", typeb=True, rnd=9, numrounds=9) == "w2"
-    # not the last round: art. 1.7.2.5 is silent and art. 1.7.2.1 says the same thing
+    # not the last round: the fifth paragraph is silent and the first says the same thing
     assert preference(0, "wwbb", typeb=True, rnd=8, numrounds=9) == "w2"
-    # CD zero without two Blacks behind it: art. 1.7.2.1 does not fire, and in the last
-    # round art. 1.7.2.5 is the clause that decides - undisputedly, no preference
+    # CD zero without two Blacks behind it: the first paragraph does not fire, and in the
+    # last round the fifth is the clause that decides - undisputedly, no preference
     assert preference(0, "wb", typeb=True, rnd=9, numrounds=9) == "nc"
     assert preference(0, "wb", typeb=True, rnd=8, numrounds=9) == "w1"
     # and type A has no such clause at all, so the last round changes nothing there

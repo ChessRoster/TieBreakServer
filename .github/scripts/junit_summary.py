@@ -42,7 +42,9 @@ never arrived, an XML file that would not parse, or a run in which nothing was
 collected at all.  Those are invisible to every other check, and a summary that
 says "All checks passed" while a quarter of the shards are missing is worse than
 no summary, so they exit non-zero.  ``--expect-files`` states how many shard
-result files must arrive; the workflow passes it from the size of its own matrix.
+result files must arrive; the workflow also passes the exact Python and shard
+axes. This catches one coordinate being uploaded twice in place of a missing
+coordinate even when the file count is right.
 
 Everything read out of a JUnit artifact -- case ids, failure messages, skip
 reasons, file names -- is attacker-controlled on a fork pull request, because the
@@ -188,10 +190,16 @@ def collect(directory):
     pythons = set()
     file_count = 0
     parse_errors = []
+    coordinates = collections.Counter()
 
     for path in sorted(directory.rglob("results-*.xml")):
-        name_match = _FILE_RE.search(path.name)
-        python = name_match.group("python") if name_match else "unknown"
+        name_match = _FILE_RE.fullmatch(path.name)
+        if name_match is None:
+            parse_errors.append((path.name, "filename is not results-<python>-<shard>.xml"))
+            python = "unknown"
+        else:
+            python = name_match.group("python")
+            coordinates[(python, name_match.group("shard"))] += 1
         pythons.add(python)
         try:
             root = ET.parse(path).getroot()
@@ -270,6 +278,7 @@ def collect(directory):
         "xfail_reasons": xfail_reasons,
         "pythons": pythons,
         "file_count": file_count,
+        "coordinates": coordinates,
         "parse_errors": parse_errors,
     }
 
@@ -312,7 +321,7 @@ def _reasons_block(title, note, reasons):
     return lines
 
 
-def integrity_problems(report, expected_files=None):
+def integrity_problems(report, expected_files=None, expected_coordinates=None):
     """Reasons this aggregate cannot be read as a complete picture of the run.
 
     These are the faults no other check can see.  A shard whose job dies before
@@ -344,6 +353,24 @@ def integrity_problems(report, expected_files=None):
                 "cover something other than the run that was configured."
                 % (-shortfall, expected_files))
 
+    coordinates = report.get("coordinates", {})
+    for python, shard in sorted(
+            coordinate for coordinate, count in coordinates.items() if count > 1):
+        problems.append(
+            "Duplicate shard coordinate %s/%s arrived %d times; one or more "
+            "different matrix coordinates may be missing."
+            % (_code(python), _code(shard), coordinates[(python, shard)]))
+
+    if expected_coordinates is not None:
+        expected = set(expected_coordinates)
+        observed = set(coordinates)
+        for python, shard in sorted(expected - observed):
+            problems.append("Missing expected shard coordinate %s/%s."
+                            % (_code(python), _code(shard)))
+        for python, shard in sorted(observed - expected):
+            problems.append("Unexpected shard coordinate %s/%s."
+                            % (_code(python), _code(shard)))
+
     # Unreadable XML, and any pair of shards that reported contradictory results
     # for the same test id: in both cases the totals below cover something other
     # than the run that was asked for.
@@ -359,7 +386,7 @@ def integrity_problems(report, expected_files=None):
     return problems
 
 
-def render(report, expected_files=None):
+def render(report, expected_files=None, expected_coordinates=None):
     by_group = report["by_group"]
     by_python = report["by_python"]
     failures = report["failures"]
@@ -371,7 +398,7 @@ def render(report, expected_files=None):
         for outcome in _OUTCOMES:
             grand[outcome] += counts[outcome]
     total_cases = sum(grand.values())
-    problems = integrity_problems(report, expected_files)
+    problems = integrity_problems(report, expected_files, expected_coordinates)
     broken = grand["failed"] + grand["errors"]
 
     out = ["## \U0001f9ea Test results", ""]
@@ -477,17 +504,32 @@ def parse_args(argv):
              "the size of its own test matrix; a shortfall means a shard "
              "reported nothing and the summary exits non-zero rather than "
              "reporting a pass over what is left.")
+    parser.add_argument(
+        "--expect-python", action="append", default=[], metavar="VERSION",
+        help="Python matrix version expected in every shard coordinate; repeat for each version.")
+    parser.add_argument(
+        "--expect-shard", action="append", default=[], metavar="NUMBER",
+        help="1-based corpus shard expected for every Python version; repeat for each shard.")
     return parser.parse_args(argv)
 
 
 def main(argv):
     args = parse_args(argv[1:])
+    expected_coordinates = None
+    if args.expect_python or args.expect_shard:
+        if not args.expect_python or not args.expect_shard:
+            raise SystemExit("--expect-python and --expect-shard must be used together")
+        expected_coordinates = {
+            (python, str(shard))
+            for python in args.expect_python
+            for shard in args.expect_shard
+        }
     report = collect(args.directory)
-    sys.stdout.write(render(report, args.expect_files))
+    sys.stdout.write(render(report, args.expect_files, expected_coordinates))
     # Ordinary test failures leave this at 0: the matrix job that produced them
     # is already red. A non-zero status here means the *aggregate itself* cannot
     # be trusted, which nothing else in the run would otherwise notice.
-    return 1 if integrity_problems(report, args.expect_files) else 0
+    return 1 if integrity_problems(report, args.expect_files, expected_coordinates) else 0
 
 
 if __name__ == "__main__":

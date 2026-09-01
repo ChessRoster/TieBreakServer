@@ -149,6 +149,39 @@ def test_missing_junit_shard_never_says_all_passed(tmp_path, capsys):
     assert "1 of 16" in rendered
 
 
+def test_duplicate_coordinate_replacing_missing_shard_is_incomplete(tmp_path, capsys):
+    """A duplicate filename coordinate cannot satisfy a different matrix cell.
+
+    Artifacts may be downloaded into nested directories, so two files with the
+    same basename can reach the summary. Counting sixteen files alone would
+    accept a duplicate 3.11/1 in place of the expected 3.14/8.
+    """
+    passing = [("tests.test_example", "test_unit", "passed", "")]
+    expected = [(python, str(shard)) for python in ("3.11", "3.14")
+                for shard in range(1, 9)]
+    for index, (python, shard) in enumerate(expected):
+        if (python, shard) == ("3.14", "8"):
+            python, shard = "3.11", "1"
+            path = tmp_path / "duplicate" / ("results-%s-%s.xml" % (python, shard))
+            path.parent.mkdir()
+        else:
+            path = tmp_path / ("results-%s-%s.xml" % (python, shard))
+        _write_results(path, passing)
+
+    argv = ["junit_summary.py", "--expect-files", "16"]
+    for python in ("3.11", "3.14"):
+        argv += ["--expect-python", python]
+    for shard in range(1, 9):
+        argv += ["--expect-shard", str(shard)]
+    argv.append(str(tmp_path))
+    code, rendered = _capture(argv[1:], capsys)
+
+    assert code != 0
+    assert "Duplicate shard coordinate" in rendered
+    assert "Missing expected shard coordinate `3.14`/`8`" in rendered
+    assert "All checks passed" not in rendered
+
+
 def test_malformed_only_junit_reports_parser_error(tmp_path, capsys):
     """Nothing but unparseable XML is reported as a parser error, not as silence.
 
@@ -283,6 +316,30 @@ def _expected_junit_files(workflow):
     return int(found[0])
 
 
+def _matrix_pythons(tests_yml_text):
+    """The ``python-version`` matrix axis in ``tests.yml``'s own text."""
+    pythons = _PYTHONS_RE.search(tests_yml_text)
+    assert pythons, "could not find the python-version matrix axis in tests.yml"
+    return [item.strip().strip('"').strip("'")
+            for item in pythons.group("items").split(",") if item.strip()]
+
+
+def _expected_python_flags():
+    """The ``--expect-python`` invocation the matrix in ``tests.yml`` implies.
+
+    ``test-summary-comment.yml`` runs from the default branch on a
+    ``workflow_run`` trigger, so it has no matrix of its own to read at run
+    time -- it can only hardcode the same flags ``tests.yml`` passes. Deriving
+    the expectation from the matrix, rather than spelling the versions out
+    here too, means a third Python version added to the matrix and forgotten
+    in one of the two workflows fails this test instead of two files agreeing
+    with each other by coincidence.
+    """
+    tests_yml = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
+    versions = _matrix_pythons(tests_yml)
+    return " ".join("--expect-python %s" % version for version in versions)
+
+
 def test_expected_shard_count_matches_the_workflow_matrix():
     """The shard-count expectation is the size of the matrix, in both workflows.
 
@@ -300,10 +357,7 @@ def test_expected_shard_count_matches_the_workflow_matrix():
     """
     tests_yml = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
 
-    pythons = _PYTHONS_RE.search(tests_yml)
-    assert pythons, "could not find the python-version matrix axis in tests.yml"
-    python_count = len([item for item in pythons.group("items").split(",")
-                        if item.strip()])
+    python_count = len(_matrix_pythons(tests_yml))
     shard_count = len(_SHARD_RE.findall(tests_yml))
     assert python_count >= 1 and shard_count >= 1, \
         "matrix axes parsed as %d python(s) x %d shard(s)" % (python_count, shard_count)
@@ -320,9 +374,44 @@ def test_both_workflows_pass_the_expectation_to_the_summary_script():
     artifacts against and says so in its output, but a silently weakened gate is
     what this whole item is about, so the flag is pinned here as part of the
     invocation rather than left to review.
+
+    The expected ``--expect-python`` flags are derived from ``tests.yml``'s own
+    matrix rather than spelled out as literal version numbers here: a matrix
+    change that both workflows forgot to follow should fail this test, not
+    agree with a hardcoded expectation that never noticed either.
     """
+    expected_python_flags = _expected_python_flags()
     for workflow in ("tests.yml", "test-summary-comment.yml"):
         text = (WORKFLOWS / workflow).read_text(encoding="utf-8")
         assert "junit_summary.py" in text, "%s no longer runs the summary" % workflow
         assert '--expect-files "$EXPECTED_JUNIT_FILES"' in text, \
             "%s runs junit_summary.py without --expect-files" % workflow
+        assert expected_python_flags in text, \
+            "%s does not pass the expected Python coordinates (%s)" \
+            % (workflow, expected_python_flags)
+        assert "--expect-shard 1" in text and "--expect-shard 8" in text, \
+            "%s does not pass the expected shard coordinates" % workflow
+
+
+def test_test_workflow_concurrency_separates_same_named_fork_branches():
+    text = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
+    assert "github.event.pull_request.head.repo.full_name" in text
+    assert "github.repository" in text
+
+
+def test_tests_workflow_runs_on_push_to_main():
+    """The whole corpus also runs against what actually lands on ``main``.
+
+    A pull request is checked against the merge of its own branch into
+    ``main`` as of when it was opened or last synchronised, not re-run against
+    the tree main ends up with after the merge. Two branches that are each
+    green on their own can still conflict semantically once combined, and
+    without a trigger on ``push`` to ``main`` that combination never runs the
+    suite at all until the next unrelated pull request happens to pick it up.
+    """
+    text = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
+    on_block = text.split("\nconcurrency:", 1)[0]
+    assert re.search(r"^\s*push:\s*$", on_block, re.M), \
+        "tests.yml has no push trigger"
+    assert re.search(r"^\s*branches:\s*\[main\]\s*$", on_block, re.M), \
+        "tests.yml's push trigger is not scoped to main"

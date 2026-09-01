@@ -138,6 +138,9 @@ jobs:
           set +e
           python3 .github/scripts/junit_summary.py \
             --expect-files "$EXPECTED_JUNIT_FILES" \
+            --expect-python 3.11 --expect-python 3.14 \
+            --expect-shard 1 --expect-shard 2 --expect-shard 3 --expect-shard 4 \
+            --expect-shard 5 --expect-shard 6 --expect-shard 7 --expect-shard 8 \
             "${{ runner.temp }}/junit" > test-summary.md
           status=$?
           echo "status=$status" >> "$GITHUB_OUTPUT"

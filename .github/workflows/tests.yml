@@ -13,7 +13,10 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: tests-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  # Branch names are only unique within a repository. Include the PR head
+  # repository so same-named branches in two forks cannot cancel each other's
+  # runs or share a concurrency group.
+  group: tests-${{ github.event_name }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref }}
   # Cancel a superseded pull-request run when new commits arrive, but leave a
   # manually dispatched run alone so it is never cut short.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -124,7 +127,11 @@ jobs:
         run: |
           set +e
           python3 .github/scripts/junit_summary.py \
-            --expect-files "$EXPECTED_JUNIT_FILES" junit > test-summary.md
+            --expect-files "$EXPECTED_JUNIT_FILES" \
+            --expect-python 3.11 --expect-python 3.14 \
+            --expect-shard 1 --expect-shard 2 --expect-shard 3 --expect-shard 4 \
+            --expect-shard 5 --expect-shard 6 --expect-shard 7 --expect-shard 8 \
+            junit > test-summary.md
           status=$?
           cat test-summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $status

@@ -1812,7 +1812,8 @@ def test_art_4_2_1_the_first_team_is_the_standings_score_not_the_pairing_score()
     tournament.tournament["accelerated"] = {
         "name": "Acc",
         "values": [
-            {"matchResult": "W", "gameResult": "W", "firstRound": 1, "lastRound": 3,
+            {"matchPoints": decimal.Decimal("2.0"), "gamePoints": decimal.Decimal("1.0"),
+             "firstRound": 1, "lastRound": 3,
              "firstCompetitor": 1, "lastCompetitor": 2},
         ],
     }

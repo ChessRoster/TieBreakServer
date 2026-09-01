@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for trftrunc.truncate(). See PLAN-REGRESSION.md section 5 for the
-specification and section 7 step 2 for what this file is required to cover:
-column arithmetic, points/rank recomputation, record 142 preservation,
-``keep_rounds == 0``, the full-length identity case, and filtering per-round
-records (240/300/320/330) to rounds <= keep_rounds.
+"""Unit tests for trftrunc.truncate(). See this directory's README.md, "The
+truncation transform", for the specification. Covers: column arithmetic,
+points/rank recomputation, record 142 preservation, ``keep_rounds == 0``, the
+full-length case (identity on points, not necessarily on rank -- see
+trftrunc.truncate's own docstring), and filtering per-round records
+(240/300/320/330) to rounds <= keep_rounds.
 """
 import os
 import sys
@@ -196,8 +197,8 @@ def test_negative_keep_rounds_rejected():
 
 # -- per-round records (240 / 300 / 320 / 330) are filtered, not just carried --
 #
-# The present corpus carries none of these (PLAN-REGRESSION.md section 5 point
-# 6 notes this explicitly), so these are hand-built rather than corpus-derived.
+# The present corpus carries none of these records at all, so these are
+# hand-built rather than corpus-derived.
 
 
 def test_record_240_bye_filtered_by_round():
@@ -268,9 +269,9 @@ def test_pair_round_exemption_points_folded_into_declared_total():
 def test_pairing_allocated_bye_result_not_preserved():
     # 'U' (pairing-allocated bye) in round k's own slot is the *output* of
     # pairing round k -- exactly what's being asked for -- not a fact known
-    # in advance of it. bbpPairings' own reader treats 'U' (and '+', a
+    # in advance of it. the external reader treats 'U' (and '+', a
     # forfeit win) as advancing how many rounds the file has "played", so
-    # preserving either makes bbpPairings pair the round *after* the one
+    # preserving either makes the external engine pair the round *after* the one
     # being asked about. Confirmed against a real corpus divergence: this
     # was previously misclassified as a pre-declared exemption and inflated
     # the interop sweep's divergence rate to ~40-50%.

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Canonical Outcome form and the six-way classifier. See PLAN-REGRESSION.md
-section 4 for the table this module implements.
+"""Canonical Outcome form and the six-way classifier. See this directory's
+README.md, "Outcome model", for the table this module implements.
 """
 import os
 import sys
@@ -47,8 +47,8 @@ def _unordered_pairs(pairs):
 
 def classify(outcome_a, outcome_b):
     """Classify a pair of (already-normalised) Outcomes into one of the six
-    classes of PLAN-REGRESSION.md section 4. Never returns SKIPPED -- that
-    verdict is decided before either engine runs (see engines/base.py's
+    classes of the README's "Outcome model" table. Never returns SKIPPED --
+    that verdict is decided before either engine runs (see engines/base.py's
     ``screen``), not by comparing two outcomes."""
     if outcome_a.is_error or outcome_b.is_error:
         return INCONCLUSIVE
@@ -76,9 +76,12 @@ def is_board_order_only_difference(raw_pairs_a, raw_pairs_b):
     """True if two raw (board-ordered) pairing lists carry exactly the same
     boards -- same pairs, same colours, same PAB -- just listed in a
     different order. This is the secondary, non-blocking board-order
-    comparison of PLAN-REGRESSION.md section 4: bbpPairings' output order is
-    a presentation ordering (its own ``sortResults``), not a claim about
-    C.04 board assignment, so it is recorded but never gates a divergence.
+    comparison of the README's "Outcome model" section: an external engine's
+    board order is its own presentation choice, not a claim about C.04 board
+    assignment, so it is recorded but never gates a divergence. Only
+    meaningful between two outcomes that already agree on the pairing
+    (MATCH/COLOUR) -- callers should not invoke this for a PAIRING-class row,
+    see runner.py and report.py's own gating.
     """
     a = [tuple(pair) for pair in raw_pairs_a]
     b = [tuple(pair) for pair in raw_pairs_b]

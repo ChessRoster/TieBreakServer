@@ -3,7 +3,8 @@
 ``tests/corpus/_harness.py`` already does: import the engine modules once per
 worker and run the real read -> prepare -> pair path through
 ``pairingchecker.common_main()`` with a synthesised ``sys.argv``, rather than
-reimplementing any of it. See PLAN-REGRESSION.md sections 6.1 and 6.2.
+reimplementing any of it. Implements the ``Engine`` protocol in
+``engines/base.py``.
 
 ``-p -n <round>`` mode is used instead of ``_harness.py``'s ``-c`` check mode:
 that asks the engine for its own prescribed pairing of exactly one round,
@@ -36,7 +37,7 @@ for path in (REPO_ROOT, INTEROP_DIR):
 import pairingchecker  # noqa: E402
 import version  # noqa: E402
 
-from engines.base import Engine, Outcome  # noqa: E402
+from engines.base import Outcome  # noqa: E402
 from normalize import normalize_pairing  # noqa: E402
 
 _TMPDIR = tempfile.gettempdir()
@@ -48,11 +49,10 @@ _TMPDIR = tempfile.gettempdir()
 NO_LEGAL_PAIRING_CODE = 505
 
 VARIANTS = {
-    # PLAN-REGRESSION.md section 6.3: this repository has both a default
-    # pairing path and an "-x weighted" mode (pairing.py: self.optimize =
-    # "weighted" not in self.experimental). Registering both as variants of
-    # the same engine directly addresses whether the two implementations
-    # follow the same priorities.
+    # This repository has both a default pairing path and an "-x weighted"
+    # mode (pairing.py: self.optimize = "weighted" not in self.experimental).
+    # Registering both as variants of the same engine directly addresses
+    # whether the two implementations follow the same priorities.
     "default": [],
     "weighted": ["weighted"],
 }
@@ -69,7 +69,7 @@ class TieBreakServerEngine:
     reference implementation the sweep is checking, so it has nothing of its
     own to screen out -- every fixture in the corpus is, by construction,
     something it can read (see tests/corpus/README.md); screening for what
-    the *comparison* engine cannot handle lives in bbppairings.py."""
+    the *comparison* engine cannot handle lives in external_engine.py."""
 
     def __init__(self, variant="default"):
         if variant not in VARIANTS:
@@ -82,6 +82,8 @@ class TieBreakServerEngine:
         return None
 
     def pair(self, trf, round_no):
+        """Returns ``(outcome, raw)`` -- see ``Engine.pair`` in
+        ``engines/base.py`` for the shape of ``raw``."""
         input_path = _scratch("trf")
         output_path = _scratch("out")
         with open(input_path, "w", encoding="latin1") as handle:
@@ -101,7 +103,7 @@ class TieBreakServerEngine:
                 except SystemExit:
                     pass
                 except Exception as exc:  # pragma: no cover - defensive, see _harness.py
-                    return Outcome.error(code=510, message="%s: %s" % (type(exc).__name__, exc))
+                    return Outcome.error(code=510, message="%s: %s" % (type(exc).__name__, exc)), None
         finally:
             sys.argv = saved_argv
 
@@ -109,15 +111,16 @@ class TieBreakServerEngine:
         code = status.get("code")
 
         if code == NO_LEGAL_PAIRING_CODE:
-            return Outcome.no_legal_pairing()
+            return Outcome.no_legal_pairing(), None
 
         if code != 0:
             message = status.get("error")
-            return Outcome.error(code=code, message=message)
+            return Outcome.error(code=code, message=message), None
 
         pairing_result = obj.resultjson.get("pairingResult") or {}
         raw_pairs = pairing_result.get("pairs")
         if not raw_pairs:
-            return Outcome.error(code=code, message="empty pairing result")
+            return Outcome.error(code=code, message="empty pairing result"), None
 
-        return normalize_pairing((int(w), int(b)) for w, b in raw_pairs)
+        raw = [(int(w), int(b)) for w, b in raw_pairs]
+        return normalize_pairing(raw), raw

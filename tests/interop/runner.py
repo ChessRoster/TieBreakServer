@@ -1,39 +1,34 @@
 # -*- coding: utf-8 -*-
-"""The corpus sweep: PLAN-REGRESSION.md sections 6 and 9.
+"""The corpus sweep. See this directory's README.md for the design and
+"Outcome model" for the classification below.
 
 For every eligible individual fixture and every round ``k = 1..numRounds``,
 truncates once (``trftrunc.truncate(trf, k-1)``) and pairs that truncated TRF
 through three engine variants -- ``(tiebreakserver, default)``,
-``(tiebreakserver, weighted)``, ``(bbppairings, default)`` -- then classifies
-each tiebreakserver variant against bbppairings with ``normalize.classify``.
-Writes one JSON record per ``(fixture, round, tiebreakserver_variant)`` to
-``results.jsonl`` (or a shard of it).
+``(tiebreakserver, weighted)``, ``(external, default)`` -- then classifies
+each tiebreakserver variant against the external engine with
+``normalize.classify``. Writes one JSON record per ``(fixture, round,
+tiebreakserver_variant)`` to ``results.jsonl`` (or a shard of it). "external"
+is deliberately generic: which binary answers for it is supplied entirely at
+run time (see ``engines/external_engine.py``), not named here.
 
-Note on ``normalize_pairing`` and raw board order: ``Engine.pair()`` returns a
-canonical ``Outcome`` whose ``pairs`` is an order-independent frozenset -- by
-design, so the PAIRED/COLOUR/PAIRING classification never depends on board
-order (PLAN-REGRESSION.md section 4). The board-order-only secondary signal
-needs the *raw*, board-ordered pairing list each engine actually produced,
-which the canonical form has already discarded. Rather than call each engine
-twice per (fixture, round) -- once through ``.pair()`` for the Outcome, once
-more duplicating that work for the raw list, doubling the dominant cost of the
-whole sweep (bbpPairings subprocess spawns) -- the two ``_tbs_pair`` /
-``_bbp_pair`` helpers below run each engine exactly once and return both the
-canonical Outcome and the pre-normalisation raw list together. They are
-necessarily near-duplicates of ``engines/tiebreakserver.py`` and
-``engines/bbppairings.py``'s own ``pair()`` methods, built only out of names
-those modules already export (nothing in those files is modified) -- to keep
-one engine invocation per comparison rather than two.
+Note on ``normalize_pairing`` and raw board order: each adapter's ``pair()``
+returns ``(outcome, raw)`` -- ``outcome`` a canonical ``Outcome`` whose
+``pairs`` is an order-independent frozenset, by design, so the
+PAIRED/COLOUR/PAIRING classification never depends on board order, and
+``raw`` the engine's own pre-normalisation, board-ordered pairing list. The
+board-order-only secondary signal (``normalize.is_board_order_only_difference``)
+needs that raw list, which the canonical form has already discarded; both
+adapters hand it back from the one engine invocation each comparison makes,
+so nothing here has to invoke an engine a second time or duplicate either
+adapter's own ``pair()`` to get at it.
 """
 import argparse
-import contextlib
 import gzip
 import hashlib
-import io
 import json
 import os
 import platform as platform_module
-import subprocess
 import sys
 import time
 
@@ -46,120 +41,23 @@ for path in (REPO_ROOT, TESTS_DIR, INTEROP_DIR):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-import pairingchecker  # noqa: E402
 import version as version_module  # noqa: E402
 
 import trftrunc  # noqa: E402
-from engines.base import Outcome  # noqa: E402
-from engines.tiebreakserver import (  # noqa: E402
-    NO_LEGAL_PAIRING_CODE,
-    VARIANTS as TBS_VARIANTS,
-    _scratch as _tbs_scratch,
-)
-from engines.bbppairings import (  # noqa: E402
+from engines.tiebreakserver import TieBreakServerEngine, VARIANTS as TBS_VARIANTS  # noqa: E402
+from engines.external_engine import (  # noqa: E402
     BINARY_PATH,
     ENGINE_NAME,
     ENGINE_VERSION,
-    PINNED_BBP_SHA256,
-    TIMEOUT_SECONDS,
-    BbpPairingsEngine,
-    _blank_250_match_points,
-    _is_pinned_bbp_binary,
-    _parse_pairing_file,
-    _scratch as _bbp_scratch,
+    ExternalEngine,
 )
-from normalize import classify, is_board_order_only_difference, normalize_pairing  # noqa: E402
+from normalize import classify, is_board_order_only_difference  # noqa: E402
 from validate_truncation import _num_rounds  # noqa: E402
 
 CORPUS_GZ = os.path.join(TESTS_DIR, "corpus", "corpus.jsonl.gz")
 RESULTS_PATH = os.path.join(INTEROP_DIR, "results.jsonl")
 
 DEFAULT_SAMPLE = 300
-
-
-# -- engine invocation, each done once per (fixture, round, variant) ---------
-
-
-def _tbs_pair(trf, round_no, variant):
-    """Mirrors engines/tiebreakserver.py's TieBreakServerEngine.pair(), but
-    also returns the raw board-ordered pairs list before normalize_pairing()
-    discards order. See this module's docstring for why this is a near-copy
-    rather than a call to the adapter."""
-    input_path = _tbs_scratch("trf")
-    output_path = _tbs_scratch("out")
-    with open(input_path, "w", encoding="latin1") as handle:
-        handle.write(trf)
-
-    obj = pairingchecker.pairingchecker()
-    argv = ["checker", "-i", input_path, "-o", output_path, "-p", "-n", str(round_no)]
-    if TBS_VARIANTS[variant]:
-        argv += ["-x"] + TBS_VARIANTS[variant]
-
-    saved_argv = sys.argv
-    sys.argv = argv
-    try:
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            try:
-                obj.common_main()
-            except SystemExit:
-                pass
-            except Exception as exc:  # pragma: no cover - defensive, see _harness.py
-                return Outcome.error(code=510, message="%s: %s" % (type(exc).__name__, exc)), None
-    finally:
-        sys.argv = saved_argv
-
-    status = obj.resultjson.get("status", {})
-    code = status.get("code")
-
-    if code == NO_LEGAL_PAIRING_CODE:
-        return Outcome.no_legal_pairing(), None
-    if code != 0:
-        return Outcome.error(code=code, message=status.get("error")), None
-
-    pairing_result = obj.resultjson.get("pairingResult") or {}
-    raw_pairs = pairing_result.get("pairs")
-    if not raw_pairs:
-        return Outcome.error(code=code, message="empty pairing result"), None
-
-    raw = [(int(w), int(b)) for w, b in raw_pairs]
-    return normalize_pairing(raw), raw
-
-
-def _bbp_pair(trf, round_no):
-    """Mirrors engines/bbppairings.py's BbpPairingsEngine.pair(); see this
-    module's docstring."""
-    if _is_pinned_bbp_binary(BINARY_PATH):
-        trf, _ = _blank_250_match_points(trf)
-    input_path = _bbp_scratch("trf")
-    output_path = _bbp_scratch("out")
-    with open(input_path, "w", encoding="latin1") as handle:
-        handle.write(trf)
-    if os.path.exists(output_path):
-        os.remove(output_path)
-
-    try:
-        result = subprocess.run(
-            [BINARY_PATH, "--dutch", input_path, "-p", output_path],
-            capture_output=True,
-            timeout=TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired:
-        return Outcome.error(code="timeout", message="bbpPairings exceeded %ds" % TIMEOUT_SECONDS), None
-    except OSError as exc:
-        return Outcome.error(code="spawn-failed", message=str(exc)), None
-
-    if result.returncode == 0:
-        try:
-            raw_pairs = _parse_pairing_file(output_path)
-        except (OSError, ValueError) as exc:
-            return Outcome.error(code=0, message="could not parse pairing file: %s" % exc), None
-        return normalize_pairing(raw_pairs), raw_pairs
-
-    if result.returncode == 1:
-        return Outcome.no_legal_pairing(), None
-
-    message = result.stderr.decode("latin1", "replace").strip() or result.stdout.decode("latin1", "replace").strip()
-    return Outcome.error(code=result.returncode, message=message), None
 
 
 # -- corpus loading -----------------------------------------------------------
@@ -204,7 +102,7 @@ def _outcome_to_dict(outcome):
     }
 
 
-def _bbp_binary_sha256():
+def _external_binary_sha256():
     if not os.path.exists(BINARY_PATH):
         return None
     digest = hashlib.sha256()
@@ -218,29 +116,17 @@ def _bbp_binary_sha256():
 
 
 def run(records, out_handle, progress_every=25):
-    bbp_screen_engine = BbpPairingsEngine()
+    external_engine = ExternalEngine()
+    tbs_engines = {variant: TieBreakServerEngine(variant) for variant in TBS_VARIANTS}
     tbs_version = version_module.version()["version"]
-    bbp_binary_sha256 = _bbp_binary_sha256()
-    is_pinned = _is_pinned_bbp_binary(BINARY_PATH)
-    if not is_pinned:
-        print(
-            "NOTE: %s binary (sha256 %s) is not the pinned bbpPairings v6.0.0 build "
-            "(%s) -- running as an unrecognised second engine: only the "
-            "team-tournament screen applies, and the section-2.2 static rules "
-            "(record 299, record 192 allow-list, record 250 blanking) are skipped "
-            "in favour of observing this binary's own runtime behaviour."
-            % (ENGINE_NAME, bbp_binary_sha256, PINNED_BBP_SHA256),
-            file=sys.stderr,
-        )
+    external_binary_sha256 = _external_binary_sha256()
 
     meta = {
         "kind": "meta",
         "tiebreakserver_version": tbs_version,
-        "bbppairings_name": ENGINE_NAME,
-        "bbppairings_version": ENGINE_VERSION,
-        "bbppairings_sha256": bbp_binary_sha256,
-        "bbppairings_sha256_pinned": PINNED_BBP_SHA256,
-        "bbppairings_is_pinned_build": is_pinned,
+        "external_engine_name": ENGINE_NAME,
+        "external_engine_version": ENGINE_VERSION,
+        "external_engine_sha256": external_binary_sha256,
     }
     out_handle.write(json.dumps(meta) + "\n")
 
@@ -253,7 +139,7 @@ def run(records, out_handle, progress_every=25):
         name = fixture["name"]
         trf = fixture["trf"]
 
-        skip_reason = bbp_screen_engine.screen(trf)
+        skip_reason = external_engine.screen(trf)
         if skip_reason:
             skip_counts[skip_reason] = skip_counts.get(skip_reason, 0) + 1
             out_handle.write(json.dumps({"kind": "skip", "fixture": name, "reason": skip_reason}) + "\n")
@@ -271,18 +157,24 @@ def run(records, out_handle, progress_every=25):
         for k in range(1, num_rounds + 1):
             truncated = trftrunc.truncate(trf, k - 1)
 
-            tbs_default_outcome, tbs_default_raw = _tbs_pair(truncated, k, "default")
-            tbs_weighted_outcome, tbs_weighted_raw = _tbs_pair(truncated, k, "weighted")
-            bbp_outcome, bbp_raw = _bbp_pair(truncated, k)
+            external_outcome, external_raw = external_engine.pair(truncated, k)
 
-            for variant_name, tbs_outcome, tbs_raw in (
-                ("default", tbs_default_outcome, tbs_default_raw),
-                ("weighted", tbs_weighted_outcome, tbs_weighted_raw),
-            ):
-                cls = classify(tbs_outcome, bbp_outcome)
+            for variant_name, tbs_engine in tbs_engines.items():
+                tbs_outcome, tbs_raw = tbs_engine.pair(truncated, k)
+                cls = classify(tbs_outcome, external_outcome)
                 board_order_only = None
-                if tbs_outcome.is_paired and bbp_outcome.is_paired and tbs_raw is not None and bbp_raw is not None:
-                    board_order_only = is_board_order_only_difference(tbs_raw, bbp_raw)
+                # Board order is only comparable when both engines PAIRED and
+                # agree on the pairing itself (MATCH/COLOUR): a PAIRING-class
+                # row produced different boards outright, so asking whether
+                # they are "the same boards in a different order" is not a
+                # question with a useful answer, and report.py's board-order
+                # table would otherwise misfile it as "same order".
+                if (
+                    cls in ("MATCH", "COLOUR")
+                    and tbs_raw is not None
+                    and external_raw is not None
+                ):
+                    board_order_only = is_board_order_only_difference(tbs_raw, external_raw)
 
                 record = {
                     "kind": "comparison",
@@ -298,7 +190,7 @@ def run(records, out_handle, progress_every=25):
                     "platform": PLATFORM,
                     "tiebreakserver_variant": variant_name,
                     "tiebreakserver": _outcome_to_dict(tbs_outcome),
-                    "bbppairings": _outcome_to_dict(bbp_outcome),
+                    "external": _outcome_to_dict(external_outcome),
                     "class": cls,
                     "board_order_only_difference": board_order_only,
                 }

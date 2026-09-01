@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
 # Fetch a comparison-engine binary from an arbitrary public URL and install it
-# to tests/interop/bin/<name>, for pointing the interop sweep at something
-# other than the pinned bbpPairings release -- see PLAN-REGRESSION.md section
-# 6.1: the Engine protocol is what makes a second engine "a module plus a
-# registry line, not a rewrite," and this script is the binary-provisioning
-# half of that for anything fetched over HTTP rather than vendored.
-#
-# fetch-bbppairings.sh is a thin, pinned call into this script and is what
-# local iteration and CI both use for the one engine this repo knows about by
-# name; this script is what the interop-sweep GitHub Action uses to fetch
-# WHATEVER binary a run was dispatched with.
+# to tests/interop/bin/<name>, for pointing the interop sweep at an
+# independent pairing engine -- see tests/interop/engines/base.py: the
+# Engine protocol is what makes a second engine "a module plus a registry
+# line, not a rewrite," and this script is the binary-provisioning half of
+# that for anything fetched over HTTP rather than vendored. This is what the
+# interop-sweep GitHub Action uses to fetch whatever binary a run was
+# dispatched with, and what local iteration uses too.
 #
 # Usage:
 #   fetch-engine-binary.sh --url URL [--sha256 HEX] [--path-in-archive PATH]
@@ -22,8 +19,7 @@
 #                          archive itself if URL is an archive, the binary
 #                          directly otherwise). Skipped with a warning if
 #                          omitted -- callers that need a supply-chain
-#                          guarantee (this repo's own pinned bbpPairings build)
-#                          must always pass this.
+#                          guarantee should always pass this.
 #   --path-in-archive PATH
 #                          Required if URL is an archive containing more than
 #                          one regular file: the path inside the archive to
@@ -34,9 +30,14 @@
 #                          extension stripped. Used only to name --out's
 #                          default and in log output.
 #
-# Idempotent: if a file already exists at --out and --sha256 was given and
-# matches the FINAL installed binary's hash from a prior run (recorded
-# alongside it in <out>.sha256), this exits without downloading anything.
+# Idempotent: a stamp file at <out>.fetch-stamp records the exact inputs
+# (--url, --sha256, --path-in-archive) that produced the file currently at
+# --out. If --out and its stamp both exist and the stamp matches this
+# invocation's inputs verbatim, this exits without downloading anything --
+# whether or not --sha256 was given. It is a record of what was asked for,
+# not a hash of the installed binary, so passing a different --sha256 (or
+# clearing/omitting one that was given before) forces a re-fetch even though
+# the file at --out has not moved.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -86,6 +87,13 @@ sha256_of() {
     fi
 }
 
+# A SHA-256 comparison should not depend on which case the caller wrote the
+# hex digits in; sha256_of's own output is always lower-case, so it is
+# --sha256 that is normalised to match.
+lower() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
 # The stamp records exactly what produced the file at OUT -- the source URL
 # plus whichever hash was actually checked (the archive's, or the raw
 # binary's) -- so idempotency is "these are the same inputs", not a hash
@@ -113,7 +121,7 @@ fi
 if [ "${IS_ARCHIVE}" = "1" ]; then
     if [ -n "${SHA256}" ]; then
         ACTUAL="$(sha256_of "${DOWNLOADED}")"
-        if [ "${ACTUAL}" != "${SHA256}" ]; then
+        if [ "$(lower "${ACTUAL}")" != "$(lower "${SHA256}")" ]; then
             echo "fetch-engine-binary.sh: archive SHA-256 mismatch" >&2
             echo "  expected ${SHA256}" >&2
             echo "  got      ${ACTUAL}" >&2
@@ -150,7 +158,7 @@ if [ "${IS_ARCHIVE}" = "1" ]; then
 else
     if [ -n "${SHA256}" ]; then
         ACTUAL="$(sha256_of "${DOWNLOADED}")"
-        if [ "${ACTUAL}" != "${SHA256}" ]; then
+        if [ "$(lower "${ACTUAL}")" != "$(lower "${SHA256}")" ]; then
             echo "fetch-engine-binary.sh: binary SHA-256 mismatch" >&2
             echo "  expected ${SHA256}" >&2
             echo "  got      ${ACTUAL}" >&2

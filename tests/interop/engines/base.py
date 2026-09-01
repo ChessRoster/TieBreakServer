@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""The engine interface and the outcome model, per PLAN-REGRESSION.md sections
-4 and 6.1.
+"""The engine interface and the outcome model. See this directory's
+README.md, "Outcome model", for the classification this module supports.
 
 Every engine adapter -- ``tiebreakserver.py`` (in-process, this repository's
-own engine) and ``bbppairings.py`` (subprocess, the independent oracle) --
+own engine) and ``external_engine.py`` (subprocess, the independent oracle) --
 implements the same three-member ``Engine`` protocol below and returns the
 same ``Outcome`` shape, so nothing upstream of an adapter (the truncation
 transform, normalisation, classification, the runner, the report) is specific
@@ -19,15 +19,15 @@ from typing import FrozenSet, Optional, Protocol, Tuple
 # Each engine, for each (fixture, round), returns exactly one of:
 #
 #   PAIRED(pairs, pab)   a pairing was produced
-#   NO_LEGAL_PAIRING     the engine states no legal pairing exists (bbp exit 1)
+#   NO_LEGAL_PAIRING     the engine states no legal pairing exists
 #   ERROR(code, message) anything else -- a crash, a timeout, an unsupported
 #                        input the adapter did not screen out in advance
 #
 # PAIRED is always carried in canonical form: `pairs` is a frozenset of
 # (white_startno, black_startno) tuples and `pab` is the starting rank
 # receiving the pairing-allocated bye, or None. Board order is deliberately
-# not part of this form -- see normalize.py and PLAN-REGRESSION.md section 4's
-# "board order is a secondary, non-blocking dimension".
+# not part of this form -- see normalize.py and the README's "Outcome model"
+# section, "board order is a secondary, non-blocking dimension".
 
 PAIRED = "PAIRED"
 NO_LEGAL_PAIRING = "NO_LEGAL_PAIRING"
@@ -94,7 +94,7 @@ class Outcome:
 
 class Engine(Protocol):
     """The interface every engine adapter (and every -x variant of one)
-    implements. See PLAN-REGRESSION.md section 6.1."""
+    implements."""
 
     name: str
     version: str
@@ -103,18 +103,27 @@ class Engine(Protocol):
         """Return None if this engine can handle ``case``, else the reason it
         cannot (a short human-readable string, e.g. "team tournament" or
         "record 299 (abnormal assignment points)"). Screening is declarative:
-        it inspects the fixture, never runs the engine and interprets a
-        failure -- see PLAN-REGRESSION.md section 6.4. ``case`` is whatever
+        it inspects the fixture, and never runs the engine and interprets a
+        failure as the reason. ``case`` is whatever
         the runner passes (at minimum, the fixture's raw TRF text and its
         record-prefix set); an adapter that never needs to screen anything out
         may simply always return None."""
         ...
 
-    def pair(self, trf: str, round_no: int) -> Outcome:
+    def pair(self, trf: str, round_no: int) -> Tuple[Outcome, Optional[list]]:
         """Pair round ``round_no`` of a TRF already truncated to the results of
         rounds ``1..round_no - 1`` (see trftrunc.truncate). Must not raise for
         an ordinary pairing failure -- that is NO_LEGAL_PAIRING, a first-class
         outcome, not an exception. Anything unexpected (a crash, a timeout, a
         malformed response) is caught by the adapter and returned as ERROR
-        rather than propagated."""
+        rather than propagated.
+
+        Returns ``(outcome, raw)``: ``outcome`` is the canonical, board-order-
+        independent ``Outcome`` above; ``raw`` is the engine's own raw,
+        board-ordered pairing -- a list of ``(white_startno, black_startno)``
+        tuples with ``0`` marking whichever side got the pairing-allocated
+        bye -- or ``None`` when ``outcome`` is not ``PAIRED``. ``raw`` exists
+        only for the board-order-only secondary comparison
+        (``normalize.is_board_order_only_difference``); nothing about
+        classification reads it."""
         ...

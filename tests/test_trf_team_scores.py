@@ -286,6 +286,47 @@ def test_record_310_unknown_team_reports_a_typed_error():
     assert "310" in message          # the record that would have declared it
     assert "round 2" in message      # where it was found
     assert "1 - 2" in message        # the numbers that would have been right
+
+
+def test_record_310_totals_accept_a_pab_recorded_only_in_320():
+    """The 001 points column of a team event leaves the pairing-allocated bye out.
+
+    TRF-2026, record 001, columns 81-84: "In team competitions, it is an informative
+    field that shows the number of points the player scored over-the-board or in
+    forfeit wins (standard score)." A player whose team had the pairing-allocated bye
+    writes "0000 - U" for the round and does not add the bye to that field; the bye's
+    game points live in record 320 alone, and the team's total including them in record
+    310. This file is written exactly that way: three one-player teams, one round, team
+    1 has the PAB, player 1 reports 0.0, record 320 makes the bye worth 1.0 match point
+    and 1.0 game point, and record 310 gives team 1 1.0 of each.
+
+    The check summed the players' 001 totals and compared that with record 310, so this
+    spec-shaped file was refused: "team 1 declares 1.0 game points, the 001 records of
+    its players give 0.0". Files that add the bye to the 001 field as well -- every one
+    in the corpus, and the fixtures above -- must keep reading, so the check accepts a
+    record 310 that agrees with either sum.
+    """
+    lines = ["012 PAB recorded in 320 only", "042 2026-03-01", "XXR 1", "352 W"]
+    lines.append(team_line(1, "Team One", [1], "1.0", "1.0"))
+    lines.append(team_line(2, "Team Two", [2], "0.0", "0.0"))
+    lines.append(team_line(3, "Team Three", [3], "2.0", "1.0"))
+    lines.append(player_line(1, "One, Player", 2400, "0.0", [(0, "-", "U")]))
+    lines.append(player_line(2, "Two, Player", 2300, "0.0", [(3, "b", "0")]))
+    lines.append(player_line(3, "Three, Player", 2200, "1.0", [(2, "w", "1")]))
+    lines.append("320  1.0  1.0 001")
+
+    chessfile = parse(lines)
+
+    assert chessfile.get_status() == 0
+    tournament = chessfile.get_tournament(1)
+    assert {competitor["cid"]: (competitor["matchPoints"], competitor["gamePoints"])
+            for competitor in tournament["competitors"]} == {
+        1: (decimal.Decimal("1.0"), decimal.Decimal("1.0")),
+        2: (decimal.Decimal("0.0"), decimal.Decimal("0.0")),
+        3: (decimal.Decimal("2.0"), decimal.Decimal("1.0")),
+    }
+
+
 def test_a_correct_record_310_still_reads():
     """The control: the same two files with the totals they should have.
 

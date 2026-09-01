@@ -136,7 +136,22 @@ Unreleased
   off the match list, so a last round decided entirely by forfeit is counted and a
   bye announced for a round that has not been played is not. A file that really
   does disagree with its own results is still rejected, and the message now names
-  the team, the rounds counted, and the declared and calculated figures.
+  the team, the rounds counted, and the declared and calculated figures. The
+  check accepts a team's game points with or without its pairing-allocated byes
+  added to the players' 001 totals: TRF26 defines the 001 points column of a
+  team event as the points scored over the board or in forfeit wins, so a file
+  that records a bye as "0000 - U" with 0.0 and declares its value in record 320
+  alone is now read.
+- Gave a team file whose team section is the older record 013 the standing its
+  own results give. Record 013 has no score columns, and the function the reader
+  calls when a file declares no standing did nothing, so every team of such a
+  file was published on 0.0 match points and 0.0 game points - a figure the file
+  never stated, and one a team that won every match shared with a team that lost
+  every match. The totals are now the ones a record 310 is checked against,
+  computed by the same function, so the two team records report the same standing
+  for the same results. No pairing, tie-break or ranking changes: those derive
+  their own scores from the match list and the game list and never read these
+  fields.
 - Fixed a KeyError on a game recorded from only one side, such as a
   pairing-allocated bye whose opponent never recorded the same game.
 - A TRF record the reader cannot parse is again reported as "Error in trf-file,

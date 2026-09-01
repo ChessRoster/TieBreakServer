@@ -1885,28 +1885,43 @@ class trf2json(chessjson.chessjson):
         else:
             self.update_team_score(tournament)
 
-    def validate_team_scores(self, tournament):
-        """Check the match- and game-point totals declared by TRF26 record 310.
+    def team_score_totals(self, tournament, record):
+        """The match- and game-point totals the results of a team tournament give.
 
-        Record 310 columns 55-60 and 62-67 carry a team's match points and game points --
-        its standing -- and the two are checked against two different things. The match
-        points are the sum of what each of the team's matches was worth. The game points
-        are the sum of the totals the team's players report in column 81-84 of their own
-        001 records.
+        Two totals per team, worked out from two different places. The match points are
+        the sum of what each of the team's matches was worth under the match score
+        system. The game points are the sum of the totals the team's players report in
+        column 81-84 of their own 001 records -- and, returned separately, the game
+        points of the team's pairing-allocated byes.
+
+        Why separately: TRF-2026 defines column 81-84 of a team event's 001 record as
+        "an informative field that shows the number of points the player scored
+        over-the-board or in forfeit wins", so a player whose team had the PAB writes
+        "0000 - U" and does not add the bye to that field; the bye's game points are in
+        record 320 alone and the team's total including them in record 310. Files in
+        the wild -- every team file in the corpus -- add the bye to the 001 field as
+        well. Both shapes are internally consistent, and the reader cannot tell from
+        the 001 record which one a file follows, so validate_team_scores() accepts a
+        record 310 that agrees with either: the 001 sum alone, or the 001 sum plus the
+        PAB game points of every counted round the team sat out. The PAB value is the
+        match score system's "PG": record 320's game points, or a win per board when no
+        record 320 states them. A file that adds the bye in both places and declares
+        the double count in record 310 is accepted by this; that is the price of not
+        refusing either correct shape.
 
         Which matches count is decided per match, not per round, and not from
         tournament["currentRound"]. currentRound is advanced by parse_trf_player() only
         for a game actually played against a real opponent, so a round decided entirely
         by forfeit -- record 330, the whole match awarded with nobody at the board -- and
-        a round in which every team sat out never advance it, while record 310's totals
-        include both.
+        a round in which every team sat out never advance it, while the standing after
+        such a round includes both.
 
         A match counts when the file records something for its round:
 
           * the game list has a game in that round. That is the players' own 001 records,
             and it is what a round looks like once it has happened, whether it was played,
             awarded under record 330 with "+" and "-" on every board, or sat out by the
-            whole field with "U" on every board. All three are in record 310's totals.
+            whole field with "U" on every board. All three belong in the standing.
           * or the match sets two teams against each other. A pairing carrying no results
             scores Z on both sides and contributes nothing, so this costs nothing and
             covers a match declared by record 330 alone.
@@ -1914,7 +1929,7 @@ class trf2json(chessjson.chessjson):
         What is left out is a bye in a round no player has an entry for: record 240 or
         record 320 naming a team for a round that has not reached the 001 records. That
         is a pairing which has been announced and not played, and its points are not in
-        record 310 yet.
+        the standing yet.
 
         The question is deliberately asked of the game list rather than of the games
         games2matches leaves on the match: build_tmatches() empties the game list of any
@@ -1922,11 +1937,15 @@ class trf2json(chessjson.chessjson):
         001 records produced, so the games left on a bye say which record made it and not
         whether anything happened.
 
-        This rejects the event, not a team, so the message has to be one somebody can act
-        on: which team, which rounds were counted, and both figures.
+        `record` is the team record the teams were read from -- "310" or the older "013"
+        -- and it names the file's own declaration in the one message this can raise.
+        The rounds counted are returned with the totals because that is what a message
+        about a total has to quote: a reader and a file that disagree about how much of
+        the event has happened is the likeliest reason for a total to be off.
         """
         competitors = {competitor["cid"]: competitor for competitor in tournament["competitors"]}
-        calculated_match = {cid: Decimal("0.0") for cid in competitors}
+        matchpoints = {cid: Decimal("0.0") for cid in competitors}
+        pabpoints = {cid: {"points": Decimal("0.0"), "rounds": []} for cid in competitors}
         recorded = {game["round"] for game in tournament["gameList"]}
         played = set()
 
@@ -1938,40 +1957,67 @@ class trf2json(chessjson.chessjson):
                 cid = match.get(colour, 0)
                 if cid <= 0:
                     continue
-                if cid not in calculated_match:
+                if (counted and cid in pabpoints and colour == "white"
+                        and match.get("black", 0) == 0 and match.get("wResult") == "P"):
+                    pabpoints[cid]["points"] += self.scores.get_score(tournament, "match", "PG")
+                    pabpoints[cid]["rounds"].append(match["round"])
+                if cid not in matchpoints:
                     # Every record that names a team is checked as it is read, so this is
                     # the last place a number that names nobody can arrive. Indexing
                     # straight into the totals would make it a bare KeyError.
                     numbers = sorted(competitors.keys())
                     message = (
                         "A match in round " + str(match["round"]) + " is played by team "
-                        + str(cid) + ", which record 310 does not declare: the tournament"
-                        + " has " + str(len(numbers)) + " teams"
+                        + str(cid) + ", which record " + record + " does not declare: the"
+                        + " tournament has " + str(len(numbers)) + " teams"
                         + (" (" + str(numbers[0]) + " - " + str(numbers[-1]) + ")" if numbers else "")
                     )
                     self.put_status(401, message)
                     raise GacruxInputError(message)
                 if counted:
-                    calculated_match[cid] += self.scores.get_score(
+                    matchpoints[cid] += self.scores.get_score(
                         tournament, "match", match.get(result, "Z")
                     )
+
+        gamepoints = {
+            cid: sum((player["gamePoints"] for player in competitor["cplayers"]), Decimal("0.0"))
+            for cid, competitor in competitors.items()
+        }
+        return matchpoints, gamepoints, pabpoints, played
+
+    def validate_team_scores(self, tournament):
+        """Check the match- and game-point totals declared by TRF26 record 310.
+
+        Record 310 columns 55-60 and 62-67 carry a team's match points and game points --
+        its standing -- and the reader recomputes both rather than trusting them: a file
+        whose standings contradict its own results is a file whose pairing cannot be
+        right. team_score_totals() works out what the results give, and this is the
+        comparison.
+
+        A check like this earns its place only if it agrees with valid input, because it
+        rejects the event and not a team, so the message has to be one somebody can act
+        on: which team, which rounds were counted, and both figures.
+        """
+        matchpoints, gamepoints, pabpoints, played = self.team_score_totals(tournament, "310")
 
         problems = []
         for competitor in tournament["competitors"]:
             cid = competitor["cid"]
-            calculated_game = sum(
-                (player["gamePoints"] for player in competitor["cplayers"]),
-                Decimal("0.0"),
-            )
-            if competitor["matchPoints"] != calculated_match[cid]:
+            if competitor["matchPoints"] != matchpoints[cid]:
                 problems.append(
                     "team " + str(cid) + " declares " + str(competitor["matchPoints"])
-                    + " match points, the matches give " + str(calculated_match[cid])
+                    + " match points, the matches give " + str(matchpoints[cid])
                 )
-            if competitor["gamePoints"] != calculated_game:
+            # Either shape of the 001 points column is accepted: with the PAB game
+            # points in it, or without them (team_score_totals says why).
+            withpab = gamepoints[cid] + pabpoints[cid]["points"]
+            if competitor["gamePoints"] not in (gamepoints[cid], withpab):
                 problems.append(
                     "team " + str(cid) + " declares " + str(competitor["gamePoints"])
-                    + " game points, the 001 records of its players give " + str(calculated_game)
+                    + " game points, the 001 records of its players give " + str(gamepoints[cid])
+                    + (", or " + str(withpab) + " with the pairing-allocated bye of "
+                       + self.describe_rounds(pabpoints[cid]["rounds"]) + " added"
+                       if pabpoints[cid]["rounds"] and withpab != gamepoints[cid] else "")
                 )
 
         if problems:
@@ -1981,7 +2027,6 @@ class trf2json(chessjson.chessjson):
             )
             self.put_status(401, message)
             raise GacruxInputError(message)
-
     # ==============================
     #
     # Record 299, Abnormal Assignment points
@@ -2248,8 +2293,36 @@ class trf2json(chessjson.chessjson):
 
 
     def update_team_score(self, tournament):
+        """Give every team of a file that declares no standing the one its results give.
+
+        The older team record, 013, is a team name and a list of players and nothing
+        else: it has no score columns, so a team read from one keeps the zeros
+        parse_trf_team() starts it with, and until now nothing replaced them. Every team
+        of a legacy team file was therefore published on 0.0 match points and 0.0 game
+        points, where the same tournament written with record 310 was published with the
+        totals that record declares.
+
+        Nothing inside the engine reads these fields -- the pairing and the tie-breaks
+        work the scores out for themselves from the match list and the game list -- so
+        this changes no pairing, no tie-break and no ranking. What was wrong is the
+        chessjson the reader hands out, and a program reading a team's standing from it
+        got a zero with nothing to say the number was missing rather than nil.
+
+        The totals are the ones validate_team_scores() checks a record 310 against, from
+        the same place, so the two team records now report the same standing for the same
+        results: what this writes for a 013 file is what a 310 file would have had to
+        declare to be accepted.
+
+        This runs from prepare_team_section() after games2matches has built the match
+        list, which is what the match points are summed from.
+        """
+        # The 001 sum alone: a legacy 013 file has no record 320 to say a PAB is worth
+        # anything else, and its players' 001 totals are the only standing it declares.
+        matchpoints, gamepoints, _pabpoints, _played = self.team_score_totals(tournament, "013")
         for competitor in tournament["competitors"]:
-            pass
+            cid = competitor["cid"]
+            competitor["matchPoints"] = matchpoints[cid]
+            competitor["gamePoints"] = gamepoints[cid]
 
     # Module test
 

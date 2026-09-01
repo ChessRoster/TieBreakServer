@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Positions taken from tournaments in the conformance corpus, not constructed by hand.
+Positions taken from tournaments in the engine regression corpus, not constructed by hand.
 
 The tests in test_pairing_fideteam.py build the smallest position in which one article
 decides, which is the right way to hold the engine to a regulation. This file does the

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Sun Jul 12 09:12:44 2026
-@author: Otto Milvang, sjakk@milvang.no
+@author: Colin Scheriff
 
 Crosstable for the FIDE Swiss Team Pairing System, C.04.6.
 

@@ -87,9 +87,9 @@ class chessjson:
             "U": "U",
         }
 
-        if sys.version_info[0] < 3 or sys.version_info[0] == 3 and sys.version_info[1] < 8:
+        if sys.version_info[0] < 3 or sys.version_info[0] == 3 and sys.version_info[1] < 11:
             self.chessjson["status"]["code"] = 500
-            self.chessjson["result"]["error"].append("Python version must be at least ver. 3.8")
+            self.chessjson["status"]["error"].append("Python version must be at least ver. 3.11")
 
     def print_warning(self, line):
         if self.debug:

@@ -86,6 +86,10 @@ Unreleased
 - Added a tie-break value baseline over the TRF corpus, holding a broad
   catalogue of 32 individual and 38 team tie-break calculations for every
   competitor under both the 2024 and the 2026 rules.
+- Corrected ACC/X for a team tournament whose primary score is match points and
+  secondary score is game points. The secondary accelerated score now adds the
+  virtual game-point value rather than adding the virtual match-point value a
+  second time.
 - Fixed absolute colour preferences when the colour difference is +/-1 and the
   player received the same colour in their last two played games.
 - The COP tie-break lists the colour preference of C.04.3 article 1.7 exactly

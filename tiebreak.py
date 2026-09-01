@@ -1432,7 +1432,15 @@ class tiebreak:
                 and startno >= val["firstCompetitor"]
                 and startno <= val["lastCompetitor"]
             ):
-                acc = val["gamePoints"] if prefix == "points_" else val["matchPoints"]
+                # Individual scores and a team's game-point score use game points;
+                # only a team's match-point score uses match points. ACC/X reaches
+                # this method with the secondary ``gpoints_`` prefix when match points
+                # are primary.
+                acc = (
+                    val["gamePoints"]
+                    if prefix in ("points_", "gpoints_")
+                    else val["matchPoints"]
+                )
         return acc
 
     # STD: 1.0/ 0.5 /0.0 point system

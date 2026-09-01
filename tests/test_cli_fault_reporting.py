@@ -325,6 +325,31 @@ def test_an_engine_invariant_violation_is_still_a_program_error(tmp_path, monkey
     assert "Program error" in messages(checker)
 
 
+def test_a_bad_tpn_reports_401_not_502(tmp_path):
+    """A record the reader has already refused must not be refused a second time, worse.
+
+    A team pairing number that is not a number -- "  X" in columns 5-7 of record 310 --
+    makes parse_trf_team() raise ValueError from parse_int, and pass 2 of
+    read_all_lines() turns that into a clean 401, "Error in trf-file, line N", and hands
+    the lines read so far back. parse_file() then carried on as if nothing had happened:
+    validate_team_pairing_numbers() read the same column again, raised the same
+    ValueError from outside the handler, and the command line reported 502 "Error when
+    reading file" with the 401 message buried under two more. The first status was the
+    right one, so the reader now stops after read_all_lines() when a status of 400 or
+    more has been recorded.
+    """
+    trf = round_robin(declared=2).replace("310   3 ", "310   X ")
+    assert "310   X " in trf
+    path = write(tmp_path, trf)
+
+    (checker, _) = run(path, ["-p"])
+
+    assert status(checker) != 502, "the reader had already named the fault; do not re-report it"
+    assert status(checker) == 401
+    assert "Error in trf-file, line" in messages(checker)
+    assert "Error when reading file" not in messages(checker)
+
+
 def test_a_declared_round_with_no_legal_pairing_is_not_accepted(tmp_path):
     """A file may not check out on a round the rules prescribe no pairing for.
 

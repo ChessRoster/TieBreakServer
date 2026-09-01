@@ -55,13 +55,20 @@ Unreleased
   of such a file, reports status 401 naming record 142 and the -N flag, which
   lifts it; for a type B file the message also names article 1.7.2, whose
   last-round clauses need the same answer. Earlier rounds are unaffected.
-- Corrected the C.04.6 [C7] and [C10] quality of a pair containing two
-  upfloaters. Both teams are below the score level of the bracket, so both must
-  be counted when they floated in the previous round, and each is the other
-  upfloater's opponent. The old edge quality counted neither and could let the
-  pairing identifier choose before [C10].
-- Enforced article 1.1.1 on record 310: team tournament pairing numbers must be
-  distinct and cover the complete range from 1 through the number of teams.
+- Corrected the reported C.04.6 [C5], [C7] and [C10] quality of a pair
+  containing two upfloaters. Both teams are below the score level of the
+  bracket, so both scores and previous-round floats must be counted, and each
+  is the other upfloater's opponent. This does not change a reachable pairing:
+  [C4] ensures a selected bracket cannot pair two of its own upfloaters, because
+  dropping that pair would leave a legal round with two fewer upfloaters. It
+  makes the checker and diagnostics report the criteria themselves correctly.
+- Enforced article 1.1.1 on record 310 for the FIDE Swiss team pairing system:
+  team tournament pairing numbers must be distinct and cover the complete range
+  from 1 through the number of teams. Other team systems, such as a team round
+  robin, need distinct numbers only, as TRF26 record 310 asks. The reader stops
+  after the first refused record, so a non-numeric team pairing number is
+  reported once as 401 naming the line instead of as 502 with that message
+  buried under two more.
   Duplicate, zero and gapped identifiers are now rejected at the record instead
   of reaching array indexing or silently replacing a team.
 - Corrected Sonneborn-Berger cut modifiers to select a voluntary unplayed

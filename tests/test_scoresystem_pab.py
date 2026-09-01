@@ -12,6 +12,7 @@ worth what a win is worth -- and reads the points of record 162 back into a resu
 so. A PAB whose points are the points of no result cannot be read back that way, and is
 held as its points.
 """
+from copy import deepcopy
 import decimal
 
 import trf2json
@@ -84,3 +85,55 @@ def test_pab_worth_a_win_is_still_held_as_a_win():
     assert chessfile.get_status() == 0
     assert scoresystem["P"] == "W"
     assert points_of(chessfile)[5] == decimal.Decimal("6.0")
+
+
+def test_team_pab_keeps_its_declared_total_and_standard_board_results():
+    """A team PAB has two deliberately different game-point representations.
+
+    C.04.6 art. 1.4 awards the game-point total declared by record 320, so the
+    standings must receive the custom 1.5 points below. C.07 art. 12 separately says
+    that each board is considered a standard win for the board-order tie-breaks; with
+    two boards those synthetic board values are one point apiece. Neither representation
+    may replace the other.
+    """
+    system = scoresystem()
+    score = deepcopy(system.default_score)
+    score["match"]["P"] = decimal.Decimal("1.0")
+    score["match"]["PG"] = decimal.Decimal("1.5")
+    score["primary"] = "match"
+    score["secondary"] = "game"
+    tournament = {
+        "teamTournament": True,
+        "teamSize": 2,
+        "numRounds": 1,
+        "currentRound": 1,
+        "tournamentType": "Team-Swiss",
+        "scoreSystem": score,
+        "rankOrder": ["PTS"],
+        "competitors": [
+            {"cid": 1, "rank": 1, "present": True, "cplayers": []},
+            {"cid": 2, "rank": 2, "present": True, "cplayers": []},
+        ],
+        "gameList": [],
+        "matchList": [
+            {
+                "id": 1,
+                "round": 1,
+                "white": 1,
+                "black": 0,
+                "played": True,
+                "wResult": "P",
+                "games": [],
+            }
+        ],
+    }
+    params = {"tiebreak": ["MPTS", "GPTS", "BC"], "check": False, "unrated": None}
+    engine = tiebreak(tournament, -1, params)
+    result = engine.compute_tiebreaks(tournament, params)
+    first = next(competitor for competitor in result["competitors"] if competitor["cid"] == 1)
+
+    assert first["tiebreakScore"][:2] == [decimal.Decimal("1.0"), decimal.Decimal("1.5")]
+    assert engine.cmps[1]["tbval"]["gpoints_bp"] == {
+        1: decimal.Decimal("1.0"),
+        2: decimal.Decimal("1.0"),
+    }

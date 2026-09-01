@@ -109,14 +109,12 @@ class event:
     def player(self, team, board):
         return 100 * team + board
 
-    def initial_order(self, ranks):
-        """The initial order of the field (Article 2 of the General Handling Rules for
-        Swiss Tournaments), given as the rank of team 1, team 2 and so on.
+    def final_ranks(self, ranks):
+        """The reported final rank of team 1, team 2 and so on.
 
-        By default the harness makes the rank of a team its own number, so the two orders
-        agree and nothing tells them apart. The -r option of the command line pairs on the
-        rank order rather than on the competitor ids of the file, and the TPN of art.
-        1.1.1 is then the place of a team in THIS order.
+        By default the harness makes rank and TPN the same number, so confusing them is
+        invisible. Reversing the ranks makes tests able to prove that ``-r`` presentation
+        does not replace the TPN assigned by the competition.
         """
         for team, rank in enumerate(ranks, start=1):
             self.tournament["competitors"][team - 1]["rank"] = rank
@@ -1666,35 +1664,35 @@ def test_art_3_6_1_a_heterogeneous_bracket_is_read_in_tpn_order():
 # The board order - art. 3.6 of the General Handling Rules
 # ---------------------------------------------------------------------------
 
-def test_the_board_order_runs_on_the_tpn_and_not_on_the_competitor_id():
+def test_the_board_order_runs_on_fixed_tpn_and_not_on_final_rank():
     """Article 3.6 of the General Handling Rules for Swiss Tournaments - the order the
     matches are put on the boards. C.04.7 art. 1.5 names it as one of the three things the
     pairing score is used for, "sort boards per Article 3.6 of the General Handling
     Rules", and what breaks a tie of equal scores there is the pairing number - the TPN of
-    C.04.6 art. 1.1.1 - not the competitor id the file happens to carry.
+    C.04.6 art. 1.1.1 - not the final rank.
 
-    The two are the same number in an ordinary file, and the -r option of the command line
-    is what tells them apart: it pairs on the initial order of the field (Article 2 of the
-    General Handling Rules) rather than on the ids, and the TPN is then the place of a team
-    in that order. Four teams whose initial order reverses their ids: team 4 has TPN 1,
-    team 3 has TPN 2, team 2 has TPN 3 and team 1 has TPN 4.
+    The two can be the same number in a generated file, so reverse the final ranks against
+    the assigned TPNs: team 1 has TPN 1 and final rank 4, through team 4 with TPN 4 and
+    final rank 1. The ``-r`` option prints in rank order; it must not pair in that order or
+    modify the identifiers that art. 1.1.3 says remain fixed.
 
     Round 1, so every score is equal and the whole board order rests on this one tie-break
     - which is what isolates it. Art. 3.6.2 pairs TPN 1 with TPN 3 and TPN 2 with TPN 4,
-    that is teams 4-2 and 3-1, and art. 4.3.1 colours them: the first-team of each pair is
-    the smaller TPN (art. 4.2.3, all the scores being zero), team 4 with the odd TPN 1
-    takes the initial-colour White and team 3 with the even TPN 2 takes Black.
+    that is teams 1-3 and 2-4, and art. 4.3.1 colours them: the first-team of each pair is
+    the smaller TPN (art. 4.2.3, all the scores being zero), team 1 with the odd TPN 1
+    takes the initial-colour White and team 2 with the even TPN 2 takes Black.
 
     On the boards, the match holding TPN 1 comes before the match holding TPN 2. Ordering
-    on the competitor ids instead puts the match holding team 1 first, which is the last
-    team of the field.
+    on final rank instead would put team 4's match first and change the pairing itself.
     """
     tournament = event(4, 5)
-    tournament.initial_order([4, 3, 2, 1])
+    tournament.final_ranks([4, 3, 2, 1])
     engine = tournament.engine(1, rank=True)
     engine.compute_pairing(False)
-    assert [engine.competitors[team]["tpn"] for team in range(1, 5)] == [4, 3, 2, 1]
-    assert tournament.pair(1, rank=True) == [(4, 2), (1, 3)]
+    assert engine.rank == "cid"
+    assert [engine.competitors[team]["tpn"] for team in range(1, 5)] == [1, 2, 3, 4]
+    assert tournament.pair(1, rank=True) == tournament.pair(1)
+    assert tournament.pair(1, rank=True) == [(1, 3), (4, 2)]
 
 
 # ---------------------------------------------------------------------------

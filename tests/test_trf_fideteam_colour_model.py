@@ -138,6 +138,39 @@ def test_the_declared_pairing_is_the_one_the_no_preference_model_prescribes():
     assert check([]) == 0
 
 
+def test_trf_team_tpns_are_fixed_by_record_310_not_rank_output_switch():
+    """C.04.6 art. 1.1.1/1.1.3 keeps each assigned TPN fixed.
+
+    The first field of record 310 is the team's pairing number and its later rank field
+    is the final standing. Reversing those ranks against the TPNs makes the distinction
+    visible: both the ordinary checker and ``-r`` must retain the assigned TPNs. ``-r``
+    is a presentation/order switch and cannot renumber a FIDE team tournament.
+    """
+    lines = []
+    with open(FIXTURE, encoding="latin1") as handle:
+        for line in handle.read().splitlines():
+            if line.startswith("310"):
+                cid = int(line[4:7])
+                line = line[:68] + f"{10 - cid:3d}" + line[71:]
+            lines.append(line)
+    reader = trf2json.trf2json()
+    reader.parse_file("\n".join(lines), 0)
+    tournament = reader.get_tournament(1)
+    expected = {cid: cid for cid in range(1, 10)}
+
+    tpns = []
+    for output_rank in (False, True):
+        built = pairing_fideteam(
+            tournament,
+            1,
+            {"experimental": [], "verbose": 0, "rank": output_rank, "top_color": "w"},
+        )
+        built.compute_pairing(False)
+        tpns.append({cid: built.competitors[cid]["tpn"] for cid in expected})
+
+    assert tpns == [expected, expected]
+
+
 @pytest.mark.parametrize("method", ["fideteam", "fideteam-typeb"])
 def test_forcing_a_colour_preference_model_rejects_the_same_file(method):
     """The three models are not relabellings of each other: the same file that the

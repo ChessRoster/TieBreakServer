@@ -121,9 +121,9 @@ class pairing:
         self.verbose = params.get("verbose", None)
         self.nummeets = int((rnd-1) * tournament.get("maxMeets", 1) / tournament["numRounds"]) + 1
         # self.rank names the field that orders the competitors, and so - through
-        # crosstable.list_edges - their pairing numbers. It is set before get_topcolor,
-        # which needs it in the team system: C.04.6 art. 4.3.1 ties the initial-colour to
-        # the parity of the pairing number.
+        # crosstable.list_edges - their pairing numbers. It is set before get_topcolor;
+        # a specialised system may still replace it when its rules fix the pairing
+        # number independently of the requested report order.
         rank = "experimental" in params and "fakerank" not in params["experimental"] and params.get('rank', False)
         self.rank = "rnk" if rank else "cid"
         self.topcolor = self.get_topcolor(tournament, params.get("top_color", ""))

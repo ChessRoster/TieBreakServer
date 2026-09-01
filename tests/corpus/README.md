@@ -25,8 +25,8 @@ The corpus contains 6,000 TRF-2026 tournaments:
 | category | valid | invalid | total |
 |----------|------:|--------:|------:|
 | Individual | 4,281 | 719 | 5,000 |
-| Team | 435 | 565 | 1,000 |
-| **Total** | **4,716** | **1,284** | **6,000** |
+| Team | 424 | 576 | 1,000 |
+| **Total** | **4,705** | **1,295** | **6,000** |
 
 Each decompressed line is one JSON object:
 
@@ -134,11 +134,14 @@ fixture name records the mechanism:
 The corrupted files remain parseable and internally consistent; the intended
 failure is the mismatch with the prescribed pairing or ranking.
 
-265 further team fixtures are invalid without carrying a mechanism suffix. Their
-declared pairings differ from the ones C.04.6 prescribes - 211 of them in which
-teams are paired together, 19 in declaring a round that has no legal pairing at
-all, and the rest in colour. They are held to the same rule as every other
-fixture: a declared pairing that is not the prescribed one is invalid, and the
+276 further team fixtures are invalid without carrying a mechanism suffix. Of
+these, 265 declare a pairing that differs from the one C.04.6 prescribes: 211 in
+which different teams are paired together, 19 that declare a round with no legal
+pairing at all, and 35 that differ in colour.
+
+Eleven fixtures declare a final rank that differs after the EDE/EDEBT rewrite in
+upstream 1.9.57. They are held to the same identity rule as every other fixture:
+a declared pairing or rank that is not the prescribed one is invalid, and the
 test asserts the engine rejects it.
 
 ## Running the tests
@@ -170,7 +173,7 @@ workflow run's summary page.
 been accounted for, under strict `xfail` markers, so a fixed one becomes an
 XPASS and fails the suite until its expectation is removed. **It is currently
 empty**: every record runs, and each is expected to produce the verdict its
-`valid` flag records - which for 1,284 of them means being rejected. After an
+`valid` flag records - which for 1,295 of them means being rejected. After an
 engine change, regenerate the file with:
 
 ```bash

@@ -71,6 +71,9 @@ Unreleased
   buried under two more.
   Duplicate, zero and gapped identifiers are now rejected at the record instead
   of reaching array indexing or silently replacing a team.
+- Refreshed eleven team-corpus identity expectations after rebasing on 1.9.57.
+  They carry stale final ranks after the upstream EDE/EDEBT rewrite. No input or
+  declared pairing was rewritten to make a stale tournament appear valid.
 - Corrected Sonneborn-Berger cut modifiers to select a voluntary unplayed
   round by its contribution, and to break a tie between equal contributions
   by the opponent's score, as required by FIDE C.07 article 16.5. Affects

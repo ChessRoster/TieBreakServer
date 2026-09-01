@@ -41,6 +41,31 @@ regen_values = _load("regen_tiebreak_values", "regen_tiebreak_values.py")
 _harness = _load("_harness", "_harness.py")
 
 
+def test_harness_treats_nonzero_system_exit_as_failure():
+    class ExitsNonzero:
+        def __init__(self):
+            self.resultjson = {"status": {"code": 0}}
+
+        def common_main(self):
+            raise SystemExit(2)
+
+    assert _harness._drive(ExitsNonzero, []) == 2
+
+
+def test_known_failure_regeneration_keeps_an_individual_pairing_fault(monkeypatch):
+    """The verdict test rejects status 510 for both corpus categories.
+
+    A malformed individual fixture may already be expected to reject. Without the
+    explicit fault check, ``accepts == valid`` hides its program error and drops it
+    from the regenerated known-failure file.
+    """
+    monkeypatch.setattr(regen_known_failures._harness, "tiebreak_status", lambda trf: 0)
+    monkeypatch.setattr(regen_known_failures._harness, "pairing_status", lambda trf: 510)
+    record = {"name": "ind_fault", "category": "individual", "valid": False, "trf": ""}
+
+    assert regen_known_failures._test_fails(record) == ("ind_fault", True)
+
+
 def _fake_corpus(tmp_path, count):
     """A gzipped corpus of *count* trivial records, in the real file's format."""
     path = tmp_path / "corpus.jsonl.gz"

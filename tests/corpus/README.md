@@ -1,8 +1,10 @@
-# FIDE pairing and tie-break conformance corpus
+# FIDE pairing and tie-break engine regression corpus
 
-This directory contains complete, self-contained tournament fixtures for testing
-FIDE Dutch individual pairing (C.04.3), FIDE Swiss team pairing (C.04.6), and
-C.07 tie-break calculations.
+This directory contains complete, self-contained tournament fixtures for regression
+testing this engine's implementations of FIDE Dutch individual pairing (C.04.3),
+FIDE Swiss team pairing (C.04.6), and C.07 tie-break calculations. It is not an
+independently authored FIDE conformance suite and passing it does not establish
+compliance with the FIDE rules.
 
 ## Files
 
@@ -46,6 +48,23 @@ Each decompressed line is one JSON object:
 
 No current fixture is skipped. The `skip` fields remain part of the format so a
 consumer can stage future additions when necessary.
+
+## Provenance and baseline limits
+
+The TRF records were generated from this engine's tournament data and pairing
+paths. Many invalid records then apply a deliberate, isolated corruption; the
+remaining stale team pairings preserve output from before the C.04.6 corrections.
+Consequently, the `valid` field records agreement with the expected behavior of this engine,
+not an independent ruling that the fixture is FIDE-conformant. The pairing and
+standings checks are useful regression signals, but a rules change still needs
+independent review and targeted tests.
+
+`tiebreak_values.jsonl.gz` is likewise an engine-output baseline. The regeneration
+script computes each requested tie-break for every competitor under the 2024 and
+2026 rule eras and stores a six-hex-digit SHA-256 digest per tie-break column. The
+digests detect reproducibility changes, including changes that leave final ranking
+unchanged; they are numeric regression baselines, not independently verified FIDE
+values.
 
 ## What the fixtures cover
 

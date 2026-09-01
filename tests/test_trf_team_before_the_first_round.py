@@ -72,6 +72,27 @@ def test_a_declared_colour_sequence_is_still_honoured():
     assert tournament["teamColor"] == "W"
 
 
+@pytest.mark.parametrize("record", ["352", "352 WXB", "352 W B"])
+def test_record_352_requires_a_nonempty_board_colour_sequence(record):
+    """Every character names one board and must therefore be White or Black."""
+    with pytest.raises(errors.GacruxInputError, match="only W and B"):
+        read(team_file(record))
+
+
+def test_record_352_is_team_only():
+    """TRF-2026 defines the board sequence for team competitions."""
+    with open("tests/fixtures/no_colour_preference.trf", encoding="latin1") as handle:
+        individual = handle.read() + "\n352 WB"
+    with pytest.raises(errors.GacruxInputError, match="only valid in a team tournament"):
+        read(individual)
+
+
+def test_record_352_may_not_be_repeated():
+    """Two board sequences leave both the team size and board colours ambiguous."""
+    with pytest.raises(errors.GacruxInputError, match="may occur only once"):
+        read(team_file("352 WB", "352 BW"))
+
+
 def test_record_352_wins_over_a_five_player_roster():
     """The official example has four boards but five players on a team."""
     lines = team_file().split("\n")

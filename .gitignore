@@ -28,3 +28,8 @@ htmlcov/
 # OS files
 .DS_Store
 Thumbs.db
+
+# bbpPairings interop sweep: fetched binary, not committed
+tests/interop/bin/
+tests/interop/results.jsonl
+tests/interop/repro/

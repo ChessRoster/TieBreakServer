@@ -186,6 +186,10 @@ Unreleased
   tools safe to run: neither can now rewrite a checked-in baseline from a shard
   of the corpus or from a truncated run, and the known-failures tool refuses to
   write an unclassified entry unless told to.
+- Added a cross-engine pairing regression sweep under tests/interop that pairs
+  every round of every corpus tournament with this engine and with a comparison
+  engine of the user's choosing, and reports the divergences by class. Its
+  README describes the outcome model and the truncation transform.
 - Corrected the documented minimum Python version to 3.11.
 
 2026-07-10 1.9.56

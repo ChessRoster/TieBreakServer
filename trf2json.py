@@ -306,6 +306,15 @@ class trf2json(chessjson.chessjson):
 
         tournament = self.get_tournament(1)
         self.all_lines = self.read_all_lines(tournament, alines, verbose)
+        if self.get_status() >= 400:
+            # Pass 2 has already refused a record and said which line. Everything
+            # below reads the same records again and would find the same fault, or
+            # a consequence of it, from outside the handler that named the line -- a
+            # non-numeric team pairing number, say, raised ValueError a second time
+            # from validate_team_pairing_numbers() and reached the caller as 502 with
+            # the 401 message buried under two more.
+            return
+        self.validate_team_pairing_numbers(tournament)
         # json_output("-", self.scores.score)
 
         self.scores.update_gamescore(self.chessjson, tournament, self.gamescores, "162" in self.all_lines or "222" in self.all_lines)
@@ -402,6 +411,49 @@ class trf2json(chessjson.chessjson):
             self.put_status(401, "Error in trf, no 001 records")
 
         return all_lines
+
+    def validate_team_pairing_numbers(self, tournament):
+        """Record 310 must give every team a distinct TPN; under C.04.6, 1 through N.
+
+        Two rules, from two places. TRF-2026 record 310 columns 5-7: a team pairing
+        number "From 1 to 999" -- and the reader indexes the teams by it, so two teams
+        with the same number cannot be told apart and are refused for every team
+        system. C.04.6 art. 1.1.1: "Each team must have a different TPN, from 1 to the
+        TPN corresponding to the number of teams" -- the complete range, which the
+        Swiss team pairing engine relies on and which is an article of that system
+        alone. The record 192 code table lists team events that are not C.04.6
+        (BERGER_TEAM_ROUNDROBIN, CUSTOM_TEAM_SWISS, ...) and nothing entitles the
+        reader to renumber their teams, so the range check runs only when the pairing
+        system is fideteam: a FIDE_TEAM_* code, or no record 192 at all, which the
+        command line pairs as fideteam.
+
+        Validate the record numbers themselves before a duplicate can be hidden by
+        ``self.tcompetitors`` or a gap can reach the indexing code.
+        """
+        if "310" not in self.all_lines:
+            return
+        numbers = [parse_int(line["txt"][4:7]) for line in self.all_lines["310"]]
+        fideteam = "fideteam" in tournament.get("pairingSystem", ["fideteam"])
+        found = ", ".join(str(number) for number in sorted(numbers))
+        if fideteam:
+            expected = list(range(1, len(numbers) + 1))
+            if sorted(numbers) == expected:
+                return
+            wanted = ", ".join(str(number) for number in expected)
+            message = (
+                "Record 310 must give each team a different tournament pairing number "
+                "from 1 through the number of teams (C.04.6 art. 1.1.1); found " + found
+                + ", expected " + wanted
+            )
+        else:
+            if len(set(numbers)) == len(numbers) and all(number > 0 for number in numbers):
+                return
+            message = (
+                "Record 310 must give each team a different tournament pairing number "
+                "from 1 to 999; found " + found
+            )
+        self.put_status(401, message)
+        raise GacruxInputError(message)
 
     """
     def parse_line(self, tournament, trfkey, line):
@@ -673,7 +725,11 @@ class trf2json(chessjson.chessjson):
             results[rnd].append(result)
 
         numcomp = len(tournament["competitors"])
-        points = [Decimal("0.0")] * (numcomp + 1)
+        # Indexed by pairing number, which need not be contiguous: C.04.6 art. 1.1.1
+        # fixes the team numbers as 1 through N, but a team event outside C.04.6 only
+        # has to keep them distinct (TRF-2026 record 310: "From 1 to 999").
+        highest = max([competitor["cid"] for competitor in tournament["competitors"]] + [numcomp])
+        points = [Decimal("0.0")] * (highest + 1)
 
         # update each round
         for rnd, roundresults in results.items():

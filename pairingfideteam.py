@@ -150,6 +150,11 @@ class pairing_fideteam(pairing):
     # constructor function
     def __init__(self, tournament, rnd, params):
         super().__init__(tournament, rnd, params)
+        # ``-r`` changes how the result is printed. It must not change the TPN that
+        # C.04.6 art. 1.1 fixes for the competition: the TPN orders scoregroups,
+        # upfloaters and boards, and its parity enters the colour allocation. Record 310
+        # stores it as the team's cid, independently of the final-rank field.
+        self.rank = "cid"
         self.rules = self.FIDETEAM_RULES[0]
         pairingsystem = tournament.get("pairingSystem", [])
         scoresystem = tournament.get("scoreSystem", {})
@@ -709,14 +714,16 @@ class pairing_fideteam(pairing):
     tpn_of_the_field - art. 1.1.1, "each team must have a different TPN, from 1 to the
     number of teams"
 
-    The TPN of a team is its place in the ranking order of the whole field, absent teams
-    included (art. 1.1.3). crosstable.list_edges writes exactly these numbers onto the
-    competitors; they are needed here before the crosstable exists.
+    Record 310 identifies a team by its TPN. The assigned field order includes absent
+    teams and stays fixed under art. 1.1.3; the final-rank field of that record is a
+    different number. crosstable.list_edges writes the same TPNs onto the competitors,
+    but they are needed here before the crosstable exists.
     """
 
     def tpn_of_the_field(self, tournament):
-        key = "rank" if self.rank == "rnk" else "cid"
-        order = sorted(tournament["competitors"], key=lambda team: team.get(key, 0))
+        # The team cid is the TPN assigned by record 310. Final rank and -r presentation
+        # must not renumber it.
+        order = sorted(tournament["competitors"], key=lambda team: team.get("cid", 0))
         return {team["cid"]: place for place, team in enumerate(order, start=1)}
 
     """

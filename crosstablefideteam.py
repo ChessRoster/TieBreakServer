@@ -95,10 +95,10 @@ class crosstable_fideteam(crosstable):
     Articles 2.4 and 2.5 of the General Handling Rules for Swiss Tournaments), unless the
     Chief Arbiter decides otherwise".
 
-    So the number is the team's own place in the ranking order of the whole field, and not
-    the running count over the teams that are ready to be paired that the base class keeps
-    for the individual systems: a team that is absent must keep its own number and must not
-    hand it down to the team behind it. Six articles read the number back - 3.4.4, 3.5.3,
+    So the number is the team's assigned place in the whole field, and not the running
+    count over the teams that are ready to be paired that the base class keeps for the
+    individual systems: a team that is absent must keep its own number and must not hand
+    it down to the team behind it. Seven articles read the number back - 3.4.4, 3.5.3,
     3.5.4, 3.6.1, 3.6.2, 4.2.3 and 4.3.1 - and 4.3.1 reads its parity, so one absent team
     would otherwise reverse the colours of every team below it.
 
@@ -107,7 +107,9 @@ class crosstable_fideteam(crosstable):
     """
 
     def assign_tpn(self, competitors, size):
-        rr = sorted(competitors, key=lambda s: (s[self.rank]))
+        # The team cid is the TPN assigned by record 310. ``self.rank`` is a caller's
+        # output-order switch and must not replace that fixed identifier with final rank.
+        rr = sorted(competitors, key=lambda s: s["cid"])
         for i in range(1, size):
             rr[i]["tpn"] = i
 

@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
-"""The self-validation gate: PLAN-REGRESSION.md section 7 step 4.
+"""The self-validation gate: see this directory's README.md, "Running the
+validation gate".
 
-Before a single bbpPairings divergence is trusted, this checks that
+Before a single external-engine divergence is trusted, this checks that
 ``trftrunc.truncate`` itself is not manufacturing divergences on both sides at
 once. This engine's own ``-c`` check mode replays a *whole, untruncated*
 tournament and reports, per round, the pairing it would itself prescribe --
 independent of the truncation transform entirely. That prescribed pairing must
 equal what ``TieBreakServerEngine.pair()`` (``-p -n <round>``) produces on the
 file truncated to rounds ``1..round-1``. Any mismatch is a bug in
-``trftrunc.py``, not a real finding -- see the module docstring there and
-PLAN-REGRESSION.md section 5.
+``trftrunc.py``, not a real finding -- see the module docstring there and the
+README's "The truncation transform" section.
 
-This needs no bbpPairings and no subprocess: it is pure in-process work, so it
+This needs no external engine and no subprocess: it is pure in-process work, so it
 is expected to be much faster than the full sweep and can reasonably cover the
 whole individual corpus rather than a sample.
 
@@ -19,16 +20,19 @@ Usage::
 
     python3 tests/interop/validate_truncation.py [--full] [--sample N]
 
-Exit code is 0 if every checked (fixture, round) matched, 1 otherwise. On
-failure, prints the first few mismatches with enough detail to reproduce them
-by hand.
+Exit code is 0 if every checked (fixture, round) either matched or was an
+oracle-coverage gap -- a fixture whose full, untruncated tournament has no
+legal pairing at all, leaving the ``-c`` oracle nothing to compare against
+(see ``main`` below); 1 if any round was a genuine mismatch. On failure,
+prints the first few real mismatches, and the oracle-gap count separately,
+with enough detail to reproduce them by hand.
 """
 import argparse
 import contextlib
 import io
-import json
 import os
 import sys
+import tempfile
 import time
 
 INTEROP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -43,9 +47,9 @@ from helpers import parse_int  # noqa: E402
 
 import trftrunc  # noqa: E402
 from engines.tiebreakserver import TieBreakServerEngine  # noqa: E402
-from normalize import classify  # noqa: E402
+from normalize import normalize_pairing  # noqa: E402
 
-from corpus._harness import load_corpus, _scratch as _corpus_scratch  # noqa: E402
+from corpus._harness import load_corpus  # noqa: E402
 
 DEFAULT_SAMPLE = 300
 
@@ -103,12 +107,7 @@ def _check_mode_roundpairing(trf_text):
     return by_round, None
 
 
-_TMPDIR = None
-
-
 def _scratch(suffix):
-    import tempfile
-
     return os.path.join(tempfile.gettempdir(), "tiebreak_interop_validate_%d.%s" % (os.getpid(), suffix))
 
 
@@ -131,9 +130,7 @@ def validate_fixture(fixture, tbs):
             continue
 
         truncated = trftrunc.truncate(trf, round_no - 1)
-        outcome = tbs.pair(truncated, round_no)
-
-        from normalize import normalize_pairing
+        outcome, _raw = tbs.pair(truncated, round_no)
 
         expected = normalize_pairing(prescribed)
 
@@ -214,12 +211,12 @@ def main(argv=None):
     )
 
     # A fixture where the FULL, untruncated tournament has no legal pairing at
-    # all (this corpus's deliberately-invalid "_inv_c2" category, see
-    # PLAN-REGRESSION.md's own confirmed root-cause analysis) leaves the -c
-    # oracle with nothing to compare against -- "check-mode failed" -- which
-    # is a gap in what this gate can check, not a trftrunc.py defect. Treated
-    # as a real, blocking mismatch, a gate over any full or large sample would
-    # never pass, since the corpus guarantees this category is present.
+    # all (this corpus's deliberately-invalid "_inv_c2" category) leaves the
+    # -c oracle with nothing to compare against -- "check-mode failed" --
+    # which is a gap in what this gate can check, not a trftrunc.py defect.
+    # Treated as a real, blocking mismatch, a gate over any full or large
+    # sample would never pass, since the corpus guarantees this category is
+    # present.
     oracle_gaps = [f for f in failures if f[2] and f[2].startswith("check-mode failed")]
     real_mismatches = [f for f in failures if f not in oracle_gaps]
 

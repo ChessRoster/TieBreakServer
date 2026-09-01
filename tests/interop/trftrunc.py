@@ -2,11 +2,12 @@
 """The truncation transform: cut a TRF to the results of rounds ``1..keep_rounds``
 and recompute everything that has to stay consistent with that cut.
 
-See ``PLAN-REGRESSION.md`` section 5 for the specification this module implements.
-This is deliberately the only piece of real engineering in the interop sweep: a
-truncation bug can manufacture a divergence on *both* sides of a comparison at
-once, which is why it gets its own unit tests (``test_trftrunc.py``) and its own
-self-validation gate (see the runner, step 4 of the plan's order of work).
+See this directory's README.md, "The truncation transform", for the
+specification this module implements. This is deliberately the only piece of
+real engineering in the interop sweep: a truncation bug can manufacture a
+divergence on *both* sides of a comparison at once, which is why it gets its
+own unit tests (``test_trftrunc.py``) and its own self-validation gate
+(``validate_truncation.py``, "Running the validation gate" in the README).
 
 Column arithmetic (record ``001``, zero-based Python slices), verified against
 ``trf2json.py`` and a real fixture:
@@ -19,7 +20,7 @@ Column arithmetic (record ``001``, zero-based Python slices), verified against
 
 Truncating a player line to the first k rounds is ``line[:89 + 10*k]``.
 
-Points and rank are **not** just carried over truncated: bbpPairings verifies
+Points and rank are **not** just carried over truncated: an external engine may verify
 that each player's declared score reconciles with their results under the
 file's point system and refuses to proceed otherwise, so a stale points field
 would be a hard stop rather than a subtle skew. Rather than reimplement FIDE
@@ -70,9 +71,9 @@ def _score_decimals(trf_text):
         raise
     except Exception:
         # No record 162 in the file: the TRF-2026 default game score system
-        # applies uniformly (see PLAN-REGRESSION.md section 2.4 -- the corpus
-        # carries no 162 records at all). Resolve the same table trf2json
-        # would have produced for that default, without needing a full parse.
+        # applies uniformly (the corpus carries no 162 records at all).
+        # Resolve the same table trf2json would have produced for that
+        # default, without needing a full parse.
         import scoresystem
 
         scores = scoresystem.scoresystem()
@@ -125,9 +126,9 @@ def _compute_ranks(startnos, points):
     """Standard competition ("1224") ranking by descending recomputed points,
     ties broken by starting rank for determinism. The pairing engine itself
     never reads this field back in -- see pairingdutch.py, which computes its
-    own scorelevels from results, not from record 001's rank column -- so this
-    exists purely to keep the file internally consistent for engines (like
-    bbpPairings) that do read it."""
+    own scorelevels from results, not from record 001's rank column -- so
+    this exists purely to keep the file internally consistent for an
+    external engine that does read it back."""
     ordered = sorted(startnos, key=lambda sn: (-points[sn], sn))
     ranks = {}
     prev_points = None
@@ -157,18 +158,17 @@ def _pair_round_exemption(line, keep_rounds):
     apart from the *output* of pairing round `pair_round` itself: result code
     ``U`` is the pairing-allocated bye (C.04.7/A.4 -- exactly the answer this
     round's pairing is being asked to produce, not a fact known in advance of
-    it) and ``+`` is a forfeit win, and bbpPairings' own reader
-    (fileformats/trf.cpp: `participatedInPairing = opponent != id ||
-    resultChar == 'U' || resultChar == '+'`) treats both as advancing how
-    many rounds the file has "played", so preserving either one makes
-    bbpPairings believe round `pair_round` already happened and pair the
-    round *after* it instead -- a comparison-methodology bug that manufactures
-    a divergence on top of a genuine one, confirmed empirically: excluding
-    them turned 120/120 sampled PAIRING-class divergences into MATCH with no
-    effect on 120/120 sampled MATCH controls. ``H`` (half-point bye) and
-    ``Z`` (zero-point bye) remain genuine pre-declared exemptions and are
-    preserved -- bbpPairings' own eligibleForBye() check confirms they do not
-    advance playedRounds.
+    it) and ``+`` is a forfeit win. A reader that infers how many rounds a
+    file has "played" by scanning for the last round with a real result can
+    read either one as proof round `pair_round` already happened, and then
+    answer a different question than the one being asked -- pairing the
+    round *after* it instead. Preserving either one is therefore a
+    comparison-methodology bug that manufactures a divergence on top of a
+    genuine one, confirmed empirically against a real external reader:
+    excluding them turned 120/120 sampled PAIRING-class divergences into
+    MATCH with no effect on 120/120 sampled MATCH controls. ``H`` (half-point
+    bye) and ``Z`` (zero-point bye) remain genuine pre-declared exemptions,
+    unaffected by this ambiguity, and are preserved.
 
     A played game never has opponent ``0000`` (a real opponent is a positive
     startno), so opponent == "0000" with a non-blank, non-U/+ result is
@@ -217,11 +217,20 @@ def _truncate_320(line, keep_rounds):
 
 def truncate(trf_text, keep_rounds):
     """Truncate ``trf_text`` to the declared results of rounds 1..keep_rounds
-    and return the resulting TRF text. See PLAN-REGRESSION.md section 5.
+    and return the resulting TRF text. See this directory's README.md, "The
+    truncation transform".
 
     keep_rounds == 0 drops every round's results (an all-byes-unpaired file).
     keep_rounds == the tournament's full round count is the identity
-    transform: every recomputed field should equal the input's own.
+    transform *only on the points column* -- every player's recomputed total
+    is necessarily the sum of every result already in the file. It is not,
+    in general, the identity on the rank column: ``_compute_ranks`` breaks a
+    tie on points by ascending starting rank alone, which is one defensible
+    tie-break rule but not the only one a real TRF's own rank column might
+    have been produced with (rating, entry order, a tie-break score computed
+    before round 1). A fixture whose declared ranks already agree with that
+    rule truncates to itself at full length; one that used a different rule
+    for its ties does not, and that is expected, not a truncate() defect.
     """
     if keep_rounds < 0:
         raise ValueError("keep_rounds must be >= 0, got %r" % (keep_rounds,))
@@ -248,10 +257,10 @@ def truncate(trf_text, keep_rounds):
 
     # Pass 2: rewrite record 001 (points, rank, round columns) and filter or
     # truncate the per-round records. Record 142 (scheduled round count) is
-    # deliberately left untouched -- see PLAN-REGRESSION.md section 5 point 4:
-    # Baku acceleration and several C.04 provisions key off the tournament's
-    # *scheduled* length, not how many rounds have been played. 152, 192, 162,
-    # 250 and 260 are likewise untouched (section 5 point 5).
+    # deliberately left untouched -- see the README's "The truncation
+    # transform" section: Baku acceleration and several C.04 provisions key
+    # off the tournament's *scheduled* length, not how many rounds have been
+    # played. 152, 192, 162, 250 and 260 are likewise untouched.
     out = []
     for line in lines:
         prefix = line[:3]

@@ -29,7 +29,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# bbpPairings interop sweep: fetched binary, not committed
+# external-engine interop sweep: run-specific outputs, not committed
 tests/interop/bin/
 tests/interop/results.jsonl
 tests/interop/repro/
+tests/interop/REPORT.md
+tests/interop/divergences.json

@@ -3,7 +3,8 @@ name: interop sweep
 # A manually-dispatched cross-engine regression sweep: pairs every eligible
 # individual corpus fixture, round by round, through this repository's own
 # engine and through an independently-fetched comparison-engine binary, and
-# reports where they disagree. See PLAN-REGRESSION.md for the full design.
+# reports where they disagree. See tests/interop/README.md for the full
+# design.
 #
 # Deliberately workflow_dispatch only, no schedule: it downloads a
 # caller-supplied binary from an arbitrary public URL and runs it, so it only
@@ -13,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       binary_url:
-        description: "Public URL to download the comparison-engine binary or .tar.gz/.tgz archive from (the same JaVaFo-style CLI as bbpPairings -- '<binary> --dutch INPUT -p OUTPUT')"
+        description: "Public URL to download the comparison-engine binary or .tar.gz/.tgz archive from (the JaVaFo-style pairing CLI/output convention -- '<binary> --dutch INPUT -p OUTPUT')"
         required: true
         type: string
       binary_sha256:
@@ -60,8 +61,9 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------
-  # Self-validation gate (PLAN-REGRESSION.md section 7 step 4): this engine's
-  # own -c oracle vs. -p on the truncated file. No external binary involved --
+  # Self-validation gate (tests/interop/README.md, "Running the validation
+  # gate"): this engine's own -c oracle vs. -p on the truncated file. No
+  # external binary involved --
   # a truncation bug manufactures a divergence on both sides of the real
   # comparison at once, so this has to pass before a single result from the
   # jobs below is trusted. Sharded the same way the corpus test suite is.
@@ -96,9 +98,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
       - name: Validate the truncation transform against this engine's own oracle
+        env:
+          SAMPLE_SIZE: ${{ inputs.sample_size }}
         run: |
           FLAG="--full"
-          if [ -n "${{ inputs.sample_size }}" ]; then FLAG="--sample ${{ inputs.sample_size }}"; fi
+          if [ -n "$SAMPLE_SIZE" ]; then FLAG="--sample $SAMPLE_SIZE"; fi
           python tests/interop/validate_truncation.py --shard ${{ matrix.shard.index }} --shards 8 $FLAG
 
   # ---------------------------------------------------------------------
@@ -150,9 +154,10 @@ jobs:
           TIEBREAK_INTEROP_ENGINE_BINARY: ${{ github.workspace }}/tests/interop/bin/engine.exe
           TIEBREAK_INTEROP_ENGINE_NAME: dispatched (linux)
           TIEBREAK_INTEROP_ENGINE_VERSION: ${{ inputs.binary_sha256 || 'unverified' }}
+          SAMPLE_SIZE: ${{ inputs.sample_size }}
         run: |
           FLAG="--full"
-          if [ -n "${{ inputs.sample_size }}" ]; then FLAG="--sample ${{ inputs.sample_size }}"; fi
+          if [ -n "$SAMPLE_SIZE" ]; then FLAG="--sample $SAMPLE_SIZE"; fi
           python tests/interop/runner.py $FLAG --shard ${{ matrix.shard.index }} --shards 8 \
             --out results.linux.shard${{ matrix.shard.index }}.jsonl
       - uses: actions/upload-artifact@v7
@@ -232,9 +237,10 @@ jobs:
           TIEBREAK_INTEROP_ENGINE_BINARY: ${{ github.workspace }}/tests/interop/bin/engine.exe
           TIEBREAK_INTEROP_ENGINE_NAME: dispatched (windows)
           TIEBREAK_INTEROP_ENGINE_VERSION: ${{ env.RESOLVED_VERSION }}
+          SAMPLE_SIZE: ${{ inputs.sample_size }}
         run: |
           FLAG="--full"
-          if [ -n "${{ inputs.sample_size }}" ]; then FLAG="--sample ${{ inputs.sample_size }}"; fi
+          if [ -n "$SAMPLE_SIZE" ]; then FLAG="--sample $SAMPLE_SIZE"; fi
           python tests/interop/runner.py $FLAG --shard ${{ matrix.shard.index }} --shards 8 \
             --out results.windows.shard${{ matrix.shard.index }}.jsonl
       - uses: actions/upload-artifact@v7
@@ -274,7 +280,7 @@ jobs:
           pattern: interop-results-*
           merge-multiple: true
       - name: Merge and report
-        # report.py's per-divergence bbpPairings -l checklist is best-effort
+        # report.py's per-divergence external-engine -l checklist is best-effort
         # and degrades to "not generated" without raising when no binary is
         # present at tests/interop/bin/ (see its own docstring) -- this job
         # doesn't re-fetch one, since a Linux+Windows dispatch could have two

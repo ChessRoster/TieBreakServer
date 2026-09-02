@@ -1137,7 +1137,14 @@ class tiebreak:
                             if opponent > 0:  # 16.4.1
                                 score = min(score, cmps[opponent]["tbval"][oprefix + "abh"]["val"])
                             else:             # 16.4.2
-                                score = min(score, opointsfordraw * rounds)
+                                # "the points awarded for a draw multiplied by the number of
+                                # rounds in the tournament": the scheduled rounds, a property
+                                # of the event, not the round the standings are taken after.
+                                # rounds here is the current round, which is what the
+                                # rnd <= rounds filters and the cut clamps mean; the cap is
+                                # not. When record 142 is absent trf2json infers numRounds
+                                # from the last played round, so there the two coincide.
+                                score = min(score, opointsfordraw * self.rounds)
                     else:
                         score = 0
                     if tb["modifiers"].get("urd", False) and not self.rr:

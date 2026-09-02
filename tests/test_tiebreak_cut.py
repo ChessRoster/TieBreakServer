@@ -70,15 +70,16 @@ def withdrawal_after_round_1():
     return lines
 
 
-def run(lines, tiebreaks, check=False, swiss=False):
+def run(lines, tiebreaks, check=False, swiss=False, currentround=-1):
     # swiss picks the unplayed-round rules of article 16 over the pre-determined pairing
-    # rules, the way -s does on the command line.
+    # rules, the way -s does on the command line. currentround is the round the standings
+    # are taken after; -1 is the final standings, the way -n does.
     chessfile = trf2json.trf2json()
     chessfile.parse_file("\n".join(lines), True)
     tournament = chessfile.get_tournament(1)
     params = {"tiebreak": tiebreaks, "check": check, "unrated": None,
               "pre_determined": not swiss, "swiss": swiss}
-    tb = tiebreak.tiebreak(tournament, -1, params)
+    tb = tiebreak.tiebreak(tournament, currentround, params)
     return tb.compute_tiebreaks(tournament, params)
 
 
@@ -445,3 +446,47 @@ def test_art_16_5_1_ties_among_equal_vur_contributions_go_to_the_lowest_opponent
     # art. 16.5.1 does not apply and the ordinary candidate is cut: 6.00 - 1.00 = 5.00.
     # Cutting round 1 first instead leaves round 2 in the pool and takes another 0.00.
     assert compute(real_swiss("2026-03-01"), ["SB/C2"], swiss=True)[4] == "5.00"
+
+
+def buchholz_after_round(startno, currentround):
+    # One competitor's Buchholz in the standings after currentround, and the element each
+    # round contributed to it. The details are keyed by the round number as a string.
+    result = run(real_swiss("2026-03-01"), ["BH"], check=True, swiss=True,
+                 currentround=currentround)
+    competitor = [cmp for cmp in result["competitors"] if cmp["cid"] == startno][0]
+    details = competitor["tiebreakDetails"][0]
+    rounds = 7 if currentround < 0 else currentround
+    return competitor["tiebreakScore"][0], {rnd: details[str(rnd)] for rnd in range(1, rounds + 1)}
+
+
+def test_art_16_4_2_caps_the_dummy_at_the_scheduled_rounds_not_the_current_round():
+    """C.07 art. 16.4.2: the dummy's score "shall not exceed ... the points awarded for a
+    draw multiplied by the number of rounds in the tournament, for all other unplayed
+    rounds" - the tournament's, a property of the event, not of the standings being
+    taken. Seven rounds are scheduled, so the cap is 0.5 * 7 = 3.5 whichever round the
+    standings are after.
+
+    Start number 12 has 3.0 after four rounds, with byes in rounds 1, 2 and 4 and one game
+    played, in round 3 against a player on 1.5. His own 3.0 is under the cap, so every
+    dummy takes it: 3.0 + 3.0 + 1.5 + 3.0 = 10.5. Capping at a draw times the CURRENT
+    round instead, 0.5 * 4 = 2.0, held each dummy to 2.0 and gave 7.5 - the value of a
+    four-round tournament, which this is not.
+    """
+    value, elements = buchholz_after_round(12, 4)
+
+    assert value == Decimal("10.5")
+    assert elements == {1: Decimal("3.0"), 2: Decimal("3.0"), 3: Decimal("1.5"), 4: Decimal("3.0")}
+
+    # The final standings do not move: with the tournament over, the current round is
+    # the scheduled one and the two readings coincide. Start number 12 finishes on 4.0,
+    # so there the cap does bite, at 3.5 in every unplayed round.
+    value, elements = buchholz_after_round(12, -1)
+    assert value == Decimal("24.5")
+    assert set(elements[rnd] for rnd in (1, 2, 4, 5, 6, 7)) == {Decimal("3.5")}
+
+    # And the cap still bites in intermediate standings when a score exceeds it. Start
+    # number 9 is on 4.0 after six rounds with byes in rounds 3 and 6: both dummies are
+    # held to 3.5, not given his 4.0. A cap at the current round would hold them to 3.0.
+    value, elements = buchholz_after_round(9, 6)
+    assert (elements[3], elements[6]) == (Decimal("3.5"), Decimal("3.5"))
+    assert value == Decimal("21.0")

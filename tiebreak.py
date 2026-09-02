@@ -7,6 +7,7 @@ import math
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 import chessjson as chessjson
+import colourpreference
 import rating as rating
 from errors import GacruxInputError
 
@@ -642,13 +643,27 @@ class tiebreak:
                             self.addtbval(tbscore[prefix + "cod"], rnd, pf)
                             self.addtbval(tbscore[prefix + "cod"], "val", pf)
                             pf = tbscore[prefix + "cod"]["val"]
-                            colpref = other[ocol] + "bbbbwwww"
-                            # a competitor with the same color in every game reaches |pf| >= len(colpref),
-                            # which is outside the table. Saturate on the last entry in each direction.
-                            ncol = colpref[max(-len(colpref), min(pf, len(colpref) - 1))]
-                            ncol += str(abs(pf)) if ocol != pcol else "2"
-    
                             csq += ocol
+                            if self.isteam:
+                                colpref = other[ocol] + "bbbbwwww"
+                                # a competitor with the same color in every game reaches |pf| >= len(colpref),
+                                # which is outside the table. Saturate on the last entry in each direction.
+                                ncol = colpref[max(-len(colpref), min(pf, len(colpref) - 1))]
+                                ncol += str(abs(pf)) if ocol != pcol else "2"
+                            else:
+                                # C.04.3 art. 1.7, by the function the Dutch pairing engine
+                                # reads for the same player (crosstable_dutch.color_preference
+                                # is this function). The table above is a notation of its own
+                                # -- colour by colour difference alone, strength "2" when the
+                                # last two colours match and |cod| otherwise -- and it
+                                # contradicted the engine at a colour difference of +/-1 with
+                                # two of the same colour last (wwwbb: "b2" against the
+                                # engine's "w2") and emitted strengths art. 1.7 does not
+                                # define ("b3" for wwwwb). Only played games with an opponent
+                                # reach here (C.04.2 art. 3.4), so cod and csq are the
+                                # engine's.
+                                ncol = colourpreference.color_preference(pf, csq)
+
                             pcol = ocol
                             self.addtbval(tbscore[prefix + "csq"], rnd, ocol)
                             self.addtbval(tbscore[prefix + "csq"], "val", ocol)

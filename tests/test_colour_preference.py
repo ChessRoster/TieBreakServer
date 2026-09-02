@@ -182,3 +182,62 @@ def test_art_1_7_4_the_opponent_of_a_player_with_no_preference_is_granted_theirs
     assert engine.competitors[opponent]["cop"] == "w2"
     assert pair["w"] == opponent
     assert pair["b"] == 8
+
+
+def eight_players_with_a_forfeit_and_a_bye():
+    # Eight players, four rounds. Player 1 wins over the board in round 1 (White), is
+    # awarded a forfeit win in round 2 (recorded with White, "+"), takes a half-point bye
+    # in round 3 and wins over the board in round 4 (White). Player 6 loses over the board
+    # in round 1 (Black), forfeits round 2 (recorded with Black, "-"), then plays rounds 3
+    # (White) and 4 (Black). Player 8 is absent in round 3 so the field stays even.
+    schedule = [
+        [(1, 5, "1", "0"), (2, 6, "1", "0"), (3, 7, "=", "="), (4, 8, "0", "1")],
+        [(1, 6, "+", "-"), (5, 2, "1", "0"), (7, 4, "=", "="), (3, 8, "1", "0")],
+        [(2, 3, "1", "0"), (4, 5, "=", "="), (6, 7, "0", "1")],
+        [(1, 8, "1", "0"), (2, 4, "1", "0"), (3, 6, "=", "="), (5, 7, "1", "0")],
+    ]
+    value = {"1": 1.0, "=": 0.5, "0": 0.0, "+": 1.0, "-": 0.0}
+    games = {startno: [] for startno in range(1, 9)}
+    points = {startno: 0.0 for startno in range(1, 9)}
+    for pairs in schedule:
+        seated = set()
+        for white, black, rw, rb in pairs:
+            games[white].append((black, "w", rw))
+            games[black].append((white, "b", rb))
+            points[white] += value[rw]
+            points[black] += value[rb]
+            seated |= {white, black}
+        for startno in range(1, 9):
+            if startno not in seated:
+                games[startno].append(HPB if startno == 1 else ZPB)
+                points[startno] += 0.5 if startno == 1 else 0.0
+    lines = ["012 Only played games count", "042 2026-03-01", "XXR 7"]
+    for startno in range(1, 9):
+        lines.append(player_line(startno, "P%d, X" % startno, 2400 - 10 * startno,
+                                 "%.1f" % points[startno], games[startno]))
+    return lines
+
+
+def test_art_3_4_only_played_games_count_in_the_colour_history():
+    """C.04.2 art. 3.4: "Only played games or matches count in situations where the
+    colour sequence is meaningful. So, for instance, a participant with a colour history
+    of BWBuW ('u' for unplayed, i.e. no valid game or match in round-4) will be treated
+    as if their colour history was uBWBW."
+
+    The guard is tiebreak.compute_score's "comp['played'] and comp['opponent'] > 0"
+    before anything is added to COD or CSQ. The forfeit win and the bye of player 1 are
+    unplayed rounds even though the forfeit carries a colour in the file, so his history
+    is WuuW, read as uuWW: colour difference +2, sequence "ww", absolute Black. Had the
+    forfeit counted he would be on +3 and "www". Player 6 is the sharper case: with his
+    forfeit loss counted his colour difference would be -2 and his preference ABSOLUTE
+    White; without it he is on -1 with a history "bwb", a STRONG preference for White.
+
+    The crosstable prefixes the sequence with one space for the round before the first.
+    This is green today; it pins the guard so it cannot be lost.
+    """
+    engine, _ = pair_round(eight_players_with_a_forfeit_and_a_bye(), 5)
+
+    assert (engine.competitors[1]["cod"], engine.competitors[1]["csq"],
+            engine.competitors[1]["cop"]) == (2, " ww", "b2")
+    assert (engine.competitors[6]["cod"], engine.competitors[6]["csq"],
+            engine.competitors[6]["cop"]) == (-1, " bwb", "w1")

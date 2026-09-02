@@ -1147,13 +1147,6 @@ class tiebreak:
             tbscore[prefix + "ks"]["val"] = ks
         return "ks"
 
-    def compute_buchholz_sonneborn_berger(self, tb, cmps, rounds):
-        version = self.rulesversion
-        if tb["modifiers"]["ver"]:
-            version = max(self.TIEBREAK_RULES.keys())
-        tbname = self.compute_buchholz_sonneborn_berger_ver(tb, cmps, rounds, version)
-        return tbname
-        
     def compute_ext_sonneborn_berger(self, tb, cmps, rounds):
         if len(tb["name"]) == 5:
             tb["pointtype"] = tb["name"][1:3].lower() + "points"
@@ -1161,7 +1154,9 @@ class tiebreak:
         return tbname
 
 
-    def compute_buchholz_sonneborn_berger_ver(self, tb, cmps, rounds, version):
+    def compute_buchholz_sonneborn_berger(self, tb, cmps, rounds):
+        # The rules era in force is tb["modifiers"]["ver"], which parse_tiebreak sets from
+        # the tournament's start date and the /X modifier.
         name = tb["name"].lower()
         isfb = name == "fb" or name == "afb" or tb["modifiers"].get("foremode", False)
         # For adjustment and fore two variables are important:
@@ -1202,9 +1197,7 @@ class tiebreak:
                 tbscore[oprefix + "abh"]["val"] += adjust
                 fbscore += adjust
             tbscore[oprefix + "ownscore"] = fbscore
-            #if version == 2:
-            #    tbscore[oprefix + "abh"] = max(tbscore[oprefix + "abh"], opointsfordraw * rounds)
-                
+
         if name == "abh" or name == "afb":
             return "abh"
 
@@ -1266,16 +1259,12 @@ class tiebreak:
             while high > 0:
                 if len(bhvalue) == 0:  # the cut is larger than the number of games of this competitor
                     break
+                # C.07 art. 16.5.1's exception is for the least significant value only:
+                # a high cut takes the most significant element whether or not it comes
+                # from a VUR, so there is one ordering here, with or without vun.
                 sortall = sorted(bhvalue, key=lambda game: (-game["score"], -game["tbvalue"]))
-                # sortexp = sorted(bhvalue, key=lambda game: (-game['vur'], -game['score'], -game['tbvalue'])) // No
-                # exception on high
-                sortexp = sorted(bhvalue, key=lambda game: (-game["score"], -game["tbvalue"]))
-                if vun:
-                    bhvalue = sortall[1:]
-                    tbscore[oprefix + name]["cut"].append(sortall[0]["rnd"])
-                else:
-                    bhvalue = sortexp[1:]
-                    tbscore[oprefix + name]["cut"].append(sortexp[0]["rnd"])
+                bhvalue = sortall[1:]
+                tbscore[oprefix + name]["cut"].append(sortall[0]["rnd"])
                 high -= 1
 
             #            if high > 0:

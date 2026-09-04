@@ -12,6 +12,16 @@ Rewritten direct encounter, so all DE od EDE.. TBs are treated in the same funct
 
 Unreleased
 
+- Fixed absolute colour preferences when the colour difference is +/-1 and the
+  player received the same colour in their last two played games.
+- The COP tie-break lists the colour preference of C.04.3 article 1.7 exactly
+  as the pairing engine computes it. The listing had a notation of its own that
+  read the colour off the colour difference alone, so a player on wwwbb was
+  listed as due Black where the engine gives an absolute preference for White,
+  and it emitted strengths the article does not define. Engine and listing now
+  share one function. The tie-break value baseline moves on 94 corpus records,
+  all of them the deliberately invalid colour fixtures ind_04258_inv_c3 to
+  ind_04999_inv_c3.
 - Added typed engine errors and fixed crashes involving unpairable fields,
   incomplete results, uncommon scoring systems, invalid pairing numbers,
   long colour sequences, and tie-break cuts. A Dutch round that cannot be

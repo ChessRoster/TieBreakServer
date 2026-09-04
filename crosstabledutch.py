@@ -11,6 +11,7 @@ opponents - Two-dimentional array of size [0..P+1][0..P+1] of opponent objects
 """
 
 from decimal import Decimal
+import colourpreference
 from crosstable import crosstable, flt
 from errors import GacruxInvariantError
 from tiebreak import tiebreak
@@ -125,22 +126,17 @@ class crosstable_dutch(crosstable):
     def maxquality(self):
         return qdefs.IW.value
 
+    """
+    color_preference - C.04.3 art. 1.7
+
+    The definition, the strengths it returns and the decision about which article wins
+    when several fit are in colourpreference.py, which the tie-break listing (the COP
+    column of tiebreak.compute_score) reads too, so that the engine and the listing
+    cannot disagree about the same player. This is the engine's handle on it.
+    """
+
     def color_preference(self, cod, csq):
-        # Implementation for determining color preference
-        #print(cod, csq)
-        if cod <= -2 or cod <= 0 and csq[-2:] == "bb":
-             return "w2"
-        elif cod >= 2 or cod >= 0 and csq[-2:] == "ww":
-             return "b2"
-        elif cod == -1:
-             return "w1"
-        elif cod == 1:
-             return "b1"
-        elif csq[-1:] == "b":
-             return "w0"
-        elif csq[-1:] == "w":
-             return "b0"
-        return "nc"
+        return colourpreference.color_preference(cod, csq)
 
 
 

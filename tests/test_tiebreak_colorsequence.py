@@ -52,9 +52,20 @@ def one_colour_all_the_way(rounds):
 
 @pytest.mark.parametrize("rounds", [9, 10, 15])
 def test_same_colour_in_every_game(rounds):
-    # COD is the colour difference (white games minus black games) and CSQ the colour
-    # sequence; both are well defined however lopsided the colours are. COP is derived
-    # from COD and must saturate rather than run off the end of its table.
+    """COD, COP and CSQ all stay well defined when every game had the same colour.
+
+    COD is the colour difference (white games minus black games) and CSQ the colour
+    sequence; both are well defined however lopsided the colours are. COP is derived
+    from COD and must saturate rather than run off the end of its table.
+
+    The COP assertions name the exact value rather than merely checking that the first
+    character is a colour. A weaker check ("scores[1][1][0] in 'wb'") accepts the
+    *inverted* answer -- it passes just as happily when a player who has had nothing but
+    White is told to prefer White again -- so it cannot hold the saturation direction.
+    A player on nothing but White has an absolute preference for Black ("b2"), and the
+    all-Black player the mirror ("w2"); see
+    test_long_colour_sequence_saturates_in_correct_direction for the table derivation.
+    """
     scores = compute(one_colour_all_the_way(rounds), ["COD", "COP", "CSQ"])
 
     assert scores[1][0] == rounds
@@ -62,6 +73,63 @@ def test_same_colour_in_every_game(rounds):
     assert scores[1][2] == "w" * rounds
     assert scores[2][2] == "b" * rounds
     assert scores[1][1] == "b2"
+    assert scores[2][1] == "w2"
+
+
+@pytest.mark.parametrize("rounds", [5, 6, 9, 10, 15])
+def test_long_colour_sequence_saturates_in_correct_direction(rounds):
+    """A saturated colour preference must point AWAY from the colour already had.
+
+    For an individual tournament COP is now colourpreference.color_preference, whose
+    colour-difference branch ("greater than +1" / "less than -1", art. 1.7.1) saturates
+    by construction, so a run of one colour cannot point the wrong way however long it
+    is. This test keeps holding that direction. The account below is of the lookup
+    table the listing used to read for everybody and still reads for team tournaments,
+    where the clamp it describes is what stops the table inverting.
+
+    That table is a nine-character string built in tiebreak.compute_score():
+
+        colpref = other[ocol] + "bbbbwwww"
+
+    indexed by the running colour difference ``pf`` (white games minus black games).
+    For a player whose last game was White (``ocol == "w"``, ``other[ocol] == "b"``) the
+    table is
+
+        index:   0    1    2    3    4     5    6    7    8
+                                                (also -4  -3   -2   -1)
+        letter: "b"  "b"  "b"  "b"  "b"   "w"  "w"  "w"  "w"
+
+    Index 0 is the "alternate" entry -- the opposite of the colour just played. Indices
+    +1..+4 are the four ``b`` characters, reached by a player who has had more White than
+    Black, and who is therefore due Black. Indices -1..-4 are the same four ``w``
+    characters counted from the END of the string (positions 8, 7, 6, 5), reached by a
+    player who has had more Black than White and is due White. The table is therefore a
+    map for ``pf`` in [-4, +4] and for nothing else.
+
+    Beyond that range the two halves collide. ``pf = +5`` on a player who has had five
+    Whites indexes position 5 -- the FIRST character of the negative half -- and yields
+    "w": an absolute preference for White for a player who has had nothing but White.
+    ``pf = -5`` wraps to position 4, the last character of the positive half, and yields
+    "b" for the all-Black player. Clamping to the length of the string ([-9, +8]) lands
+    inside the opposite half rather than on its own end, so it does not rescue this; the
+    clamp has to be to the range the table is a map for, [-4, +4].
+
+    5 and 6 rounds catch the positive-half collision on both players. 9, 10 and 15 rounds
+    catch it on the all-White player, where a length-based clamp masks it for the
+    all-Black player by accident: -9 and below saturate onto index 0, which happens to be
+    "w" for a player whose last game was Black.
+
+    The value is the full COP string, not just its colour, so that an inverted answer
+    cannot pass. The trailing "2" is the absolute-preference strength of C.04.3 art.
+    1.7.1: from round 2 on, this player's last two games were the same colour.
+    """
+    scores = compute(one_colour_all_the_way(rounds), ["COD", "COP"])
+
+    # Player 1 had White in every round: colour difference +rounds, due Black.
+    assert scores[1][0] == rounds
+    assert scores[1][1] == "b2"
+    # Player 2 had Black in every round: colour difference -rounds, due White.
+    assert scores[2][0] == -rounds
     assert scores[2][1] == "w2"
 
 

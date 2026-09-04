@@ -12,6 +12,68 @@ Rewritten direct encounter, so all DE od EDE.. TBs are treated in the same funct
 
 Unreleased
 
+- Added the FIDE Swiss Team Pairing System (C.04.6), including all three colour
+  models of article 1.7 - type A colour preferences, type B colour preferences,
+  and no colour preferences at all - automatic TRF selection, and team-corpus
+  coverage.
+- Routed all 1,000 team fixtures through the new engine and removed the 697
+  expected failures that represented the previously missing C.04.6 implementation;
+  every record in the 6,000-record corpus executes in CI.
+- Corrected seven faults in the C.04.6 pairing that change the pairing or the
+  colours a team tournament gets. The tournament pairing number is now the
+  team's fixed place in the field (articles 1.1.1 and 1.1.3) rather than a
+  running count that an absent team handed down, which had reversed the colours
+  of every team below an absence through article 4.3.1. A bracket is read in
+  tournament-pairing-number order when its pairing identifier is formed
+  (article 3.6.1), so heterogeneous brackets are no longer identified wrongly.
+  The first-team is decided on the standings score (article 4.2.1) instead of
+  the accelerated score, so virtual points no longer settle colours. The drawn
+  initial colour is recovered through article 4.3.1. Two teams can no longer be
+  made to meet twice by the maxMeets option, which article 2.1.1 [C1] does not
+  allow. Board order tie-breaks on the tournament pairing number, and the
+  colour model and the secondary score are each resolved from one place, so
+  naming a model on the command line and naming it in record 192 agree.
+  Naming the primary score on the command line (-m fideteam-mp) no longer
+  discards the file's answer on the secondary score: a FIDE_TEAM_TYPEA_MP file,
+  which states that game points are not used, keeps that answer and article
+  4.2.2 stays off. Only a command line naming both scores overrides it. In
+  check mode, a declared pairing-allocated bye given to a team that article
+  2.1.2 [C2] bars from it is flagged on the bye bracket of the analysis, naming
+  the team and the article.
+- Replaced the invented round the team engine produced when no legal pairing
+  existed. It used to pair as many teams as it could and hand a bye to every
+  team left over, which gives out byes article 1.4 has none to give and repeats
+  byes article 2.1.2 [C2] forbids. Such a round is now reported as unpairable,
+  which article 3.3.3 leaves to the Chief Arbiter to decide.
+- Refused a team tournament whose length is not declared within two rounds of
+  the end the reader inferred, for every colour model and in both modes.
+  Articles 2.3.4 [C7] and 2.3.7 [C10] apply "with the exception of the last two
+  rounds", and a file without record 142 does not say which rounds those are:
+  the reader infers the count from the last round played, so every round it was
+  asked for looked like one of the last two and the two criteria were switched
+  off on a guess. Pairing such a round, or checking the last two played rounds
+  of such a file, reports status 401 naming record 142 and the -N flag, which
+  lifts it; for a type B file the message also names article 1.7.2, whose
+  last-round clauses need the same answer. Earlier rounds are unaffected.
+- Corrected the reported C.04.6 [C5], [C7] and [C10] quality of a pair
+  containing two upfloaters. Both teams are below the score level of the
+  bracket, so both scores and previous-round floats must be counted, and each
+  is the other upfloater's opponent. This does not change a reachable pairing:
+  [C4] ensures a selected bracket cannot pair two of its own upfloaters, because
+  dropping that pair would leave a legal round with two fewer upfloaters. It
+  makes the checker and diagnostics report the criteria themselves correctly.
+- Enforced article 1.1.1 on record 310 for the FIDE Swiss team pairing system:
+  team tournament pairing numbers must be distinct and cover the complete range
+  from 1 through the number of teams. Other team systems, such as a team round
+  robin, need distinct numbers only, as TRF26 record 310 asks. The reader stops
+  after the first refused record, so a non-numeric team pairing number is
+  reported once as 401 naming the line instead of as 502 with that message
+  buried under two more.
+  Duplicate, zero and gapped identifiers are now rejected at the record instead
+  of reaching array indexing or silently replacing a team.
+- Refreshed eleven team-corpus identity expectations after rebasing on 1.9.57.
+  They carry stale final ranks after the upstream EDE/EDEBT rewrite. No input or
+  declared pairing was rewritten to make a stale tournament appear valid.
 - Corrected Sonneborn-Berger cut modifiers to select a voluntary unplayed
   round by its contribution, and to break a tie between equal contributions
   by the opponent's score, as required by FIDE C.07 article 16.5. Affects
@@ -53,8 +115,41 @@ Unreleased
   The suite also runs on every push to main.
 - Removed reachable debug breakpoints from the pairing engine and replaced
   invariant checks with explicit errors.
-- Fixed parsing of TRF26 record 299 abnormal assignments. The records are now
-  retained; applying their point adjustments remains future work.
+- Fixed parsing of TRF26 record 299 abnormal assignments. A record with no round
+  and no pairing numbers states what an abnormal result is worth for the whole
+  tournament and is applied as before. Applying an assignment scoped to a round
+  or to a competitor remains future work, so a file whose scoped assignment would
+  change a result the engine reports is now rejected, with a message naming the
+  record, the scope and the two point values, instead of being accepted and then
+  scored by rules other than the ones it asked for. A scoped assignment that
+  cannot change anything - because no recorded result matches the one it names,
+  or because it agrees with the score system already in force - is read and
+  accepted as before. A record 299 with a blank type - TRF26's "penalty/bonus
+  points (may be negative)", which modify the points in the standings - is
+  refused when it carries points, scoped or not, with a message naming the
+  record, the scope and the points, because the engine does not yet apply a
+  standings adjustment; such a file used to be read with status 0 and ranked
+  without it. A blank-type record of 0.0 is accepted and inert, and neither form
+  reaches the score system any more. A scoped record 299 for a team is checked
+  on its game points as well as its match points.
+- Corrected the TRF26 record 310 team-total check. The rounds it counts are read
+  off the match list, so a last round decided entirely by forfeit is counted and a
+  bye announced for a round that has not been played is not. A file that really
+  does disagree with its own results is still rejected, and the message now names
+  the team, the rounds counted, and the declared and calculated figures.
+- Fixed a KeyError on a game recorded from only one side, such as a
+  pairing-allocated bye whose opponent never recorded the same game.
+- A TRF record the reader cannot parse is again reported as "Error in trf-file,
+  line N" instead of failing later with a TypeError.
+- Enforced TRF26 record 320 as the team-only pairing-allocated-bye record the
+  format defines. A valid team record now reaches the match list, while an
+  individual file carrying record 320 is rejected with a message naming the
+  record instead of faulting later in the reader.
+- Required record 352's board-colour sequence before pairing the first round of
+  a team tournament. Record 310 lists the whole squad, including reserves, so
+  its roster length is not the number of boards in a match; a missing board
+  count is now rejected clearly instead of silently using the squad size. The
+  sequence must be unique, team-only, non-empty, and contain only W and B.
 - Corrected the documented minimum Python version to 3.11.
 
 2026-07-10 1.9.56

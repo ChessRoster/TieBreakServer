@@ -22,7 +22,7 @@ from tiebreak import tiebreak
 from pairing import pairing
 from pairingdutch import pairing_dutch
 from pairingberger import pairing_berger
-#from pairingfideteam import pairing_fideteam
+from pairingfideteam import pairing_fideteam
 
 AHEAD = "  Tournament analysis   "
 PHEAD = "  Checker pairing       "
@@ -42,7 +42,7 @@ class pairingchecker(commonmain):
         -t w | b             # initial color on top ranked player in round 1
         -u [list of illagal pairings]
         -n <no>              # Round to pair, default next round, or all rounds in check mode
-        -m <method>          # dutch | berger
+        -m <method>          # dutch | berger | fideteam[-typeb | -nocolor]
         -c                   # check mode, look if tournament pairing is correct
         -a                   # Analysis and show tournament pairing
         -p                   # Dhow the correct pairing of next round (or another round with -n)
@@ -137,13 +137,16 @@ class pairingchecker(commonmain):
         self.method = {
             "dutch": pairing_dutch,
             "berger": pairing_berger,
-            #"fideteam": pairing_fideteam
+            "fideteam": pairing_fideteam
         }
 
     def read_command_line(self):
         self.parser.add_argument("-a", "--analysis", required=False, action="count", default=0, help="Analysis pairing")
         self.parser.add_argument("-p", "--pairing", required=False, action="count", default=0, help="Do pairing")
-        self.parser.add_argument("-m", "--method", required=False, nargs="*", default=[], help="dutch | berger")
+        self.parser.add_argument(
+            "-m", "--method", required=False, nargs="*", default=[],
+            help="dutch | berger | fideteam[-typeb | -nocolor]",
+        )
         self.parser.add_argument("-t", "--top-color", required=False, default=" ", help="Color on top board")
         self.parser.add_argument("-K", "--maxmeets", required=False, default="0", help="The maximum number of meets")
         self.parser.add_argument("-u", "--unpaired", required=False, nargs="*", default=[])
@@ -400,6 +403,14 @@ class pairingchecker(commonmain):
 
     def compute_pairing(self, chessfile, pairingengine, params):
         # print('PARAMS', params)
+        # A GacruxNoLegalPairing raised by either call below is left to reach the caller.
+        # It says that this round of this tournament has no admissible pairing, which is a
+        # state of the tournament and not a defect of the engine (see errors.py): C.04.6
+        # art. 3.3.3 -- like C.04.3 art. 1.9.3 -- gives the decision of what to do about it
+        # to the arbiter, so the engine reports the state and stops. Answering with a
+        # pairing of its own devising would be worse than useless: a bye for every team it
+        # could not seat breaks art. 1.4, which allows one pairing-allocated bye in a round,
+        # and art. 2.1.2 [C2], which bars some teams from receiving even that one.
         self.pairingengine = pairingengine
         analysis = pairing = []
         acompetitors = pcompetitors = {}
@@ -550,7 +561,13 @@ class pairingchecker(commonmain):
         if chessfile.get_status() == 0:
             if params["check"]:
                 ok = all([rndpairing["check"] for rndpairing in chessfile.result["roundpairing"]])
-                ok = ok or (self.dopairing > 0 ^ self. doanalysis > 0)
+                # -a computes the declared pairing and -p the engine's own, so exactly one
+                # of them asks for one side of the comparison and leaves the other empty.
+                # There is then no difference to find, and the verdict is suppressed rather
+                # than reported as a mismatch. write_text_file decides whether to print its
+                # "Check:" line from the same test, written the same way, in the opposite
+                # sense.
+                ok = ok or ((self.dopairing > 0) != (self.doanalysis > 0))
                 chessfile.result["check"] = ok
                 self.resultjson["status"]["code"] = 0 if ok else 1
             else: 

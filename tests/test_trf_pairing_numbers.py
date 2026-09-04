@@ -36,7 +36,7 @@ def player_line(startno, name, rating, points, games):
     return line + "  ".join(["%4d %s %s" % game for game in games])
 
 
-def team_line(cid, name, players):
+def team_line(cid, name, players, matchpoints="0.0", gamepoints="0.0"):
     # Record 310, written at the columns TRF-2026 gives it:
     #     1 - 3    record identifier 310
     #     5 - 7    team pairing number
@@ -47,6 +47,8 @@ def team_line(cid, name, players):
     line[0:3] = "310"
     line[4:7] = "%3d" % cid
     line[8 : 8 + len(name)] = name
+    line[54:60] = "%6s" % matchpoints
+    line[61:67] = "%6s" % gamepoints
     line[68:71] = "%3d" % cid
     return "".join(line) + " ".join(["%4d" % player for player in players])
 
@@ -68,10 +70,10 @@ def teams(records, first=1):
     # the first player; the players are numbered consecutively from it.
     p = lambda n: n + first - 1  # noqa: E731
     lines = ["012 Pairing numbers, teams", "042 2026-03-01", "XXR 3", "352 WB"]
-    lines.append(team_line(1, "Team One", [p(1), p(2)]))
-    lines.append(team_line(2, "Team Two", [p(3), p(4)]))
-    lines.append(team_line(3, "Team Three", [p(5), p(6)]))
-    lines.append(team_line(4, "Team Four", [p(7), p(8)]))
+    lines.append(team_line(1, "Team One", [p(1), p(2)], "2.0", "2.5"))
+    lines.append(team_line(2, "Team Two", [p(3), p(4)], "2.0", "2.0"))
+    lines.append(team_line(3, "Team Three", [p(5), p(6)], "0.0", "0.5"))
+    lines.append(team_line(4, "Team Four", [p(7), p(8)], "4.0", "3.0"))
     lines.append(player_line(p(1), "One, Player", 2400, "1.5", [(p(5), "w", "1"), (p(7), "w", "=")]))
     lines.append(player_line(p(2), "Two, Player", 2300, "1.0", [(p(6), "b", "1"), (p(8), "b", "0")]))
     lines.append(player_line(p(3), "Three, Player", 2200, "0.5", [(p(7), "b", "0"), (p(5), "b", "=")]))
@@ -117,6 +119,21 @@ def test_240_names_a_team_in_a_team_tournament():
 
     byes = [match for match in matchList if match["round"] == 3]
     assert [(match["white"], match["black"], match["wResult"]) for match in byes] == [(3, 0, "D")]
+
+
+@pytest.mark.parametrize(
+    "code, model",
+    [
+        ("FIDE_TEAM_TYPEA_MP_GP", "team_typea"),
+        ("FIDE_TEAM_TYPEB_MP_GP", "team_typeb"),
+        ("FIDE_TEAM_MP_GP", "nocolor"),
+        ("FIDE_TEAM_BAKU", "team_typea"),
+    ],
+)
+def test_record_192_selects_the_declared_team_colour_model(code, model):
+    tournament = parse(teams(["192 " + code])).get_tournament(1)
+
+    assert model in tournament["pairingSystem"]
 
 
 def test_240_in_a_team_tournament_does_not_accept_a_player_number():
@@ -219,6 +236,94 @@ def test_310_naming_a_player_who_does_not_exist():
     assert "player 99" in str(excinfo.value)
 
 
+@pytest.mark.parametrize(
+    "old, new, found",
+    [
+        (4, 3, "1, 2, 3, 3"),       # duplicate
+        (4, 5, "1, 2, 3, 5"),       # gap and out of range
+        (1, 0, "0, 2, 3, 4"),       # zero
+    ],
+)
+def test_record_310_requires_distinct_contiguous_team_pairing_numbers(old, new, found):
+    """C.04.6 art. 1.1.1 fixes the team TPNs as the complete range 1 through N."""
+    lines = [
+        team_line(new, "Renumbered Team", [2 * old - 1, 2 * old])
+        if line.startswith("310" + "%4d" % old)
+        else line
+        for line in teams([])
+    ]
+
+    with pytest.raises(errors.GacruxInputError) as excinfo:
+        parse(lines)
+
+    message = str(excinfo.value)
+    assert "Record 310" in message
+    assert found in message
+    assert "expected 1, 2, 3, 4" in message
+
+
+def test_record_310_accepts_the_complete_team_pairing_number_range():
+    assert parse(teams([])).get_status() == 0
+
+
+def renumbered(records, old, new):
+    """The team fixture with team `old`'s pairing number (columns 5-7) changed to `new`."""
+    return [
+        line[:4] + "%3d" % new + line[7:] if line.startswith("310" + "%4d" % old) else line
+        for line in teams(records)
+    ]
+
+
+def test_art_1_1_1_tpn_contiguity_is_a_fide_team_swiss_rule():
+    """The complete range 1 through N is C.04.6 art. 1.1.1, and only C.04.6 asks for it.
+
+    "Each team must have a different TPN, from 1 to the TPN corresponding to the number
+    of teams" is an article of the Swiss team pairing system. TRF-2026 record 310 asks
+    only that the team pairing number be "From 1 to 999", and the record 192 code table
+    lists team events that are not C.04.6 at all -- BERGER_TEAM_ROUNDROBIN,
+    CUSTOM_TEAM_SWISS -- whose teams the reader has no article to renumber by. The check
+    ran on every file with a 310, so a round robin whose teams were numbered 1, 2, 3, 5
+    was refused for breaking a rule that does not apply to it.
+
+    The gate is the pairing system record 192 selects. A FIDE_TEAM_* code, and a team
+    file with no record 192 (which the command line pairs as fideteam), keep the full
+    art. 1.1.1 check. Every team system still needs distinct numbers: the reader indexes
+    the teams by them.
+    """
+    # A gap in a Berger round robin is not an art. 1.1.1 violation.
+    assert parse(renumbered(["192 BERGER_TEAM_ROUNDROBIN"], 4, 5)).get_status() == 0
+
+    # The same gap under the FIDE team Swiss still is.
+    with pytest.raises(errors.GacruxInputError) as excinfo:
+        parse(renumbered(["192 FIDE_TEAM_MP_GP"], 4, 5))
+    assert "Record 310" in str(excinfo.value)
+    assert "expected 1, 2, 3, 4" in str(excinfo.value)
+
+    # And two teams with the same number are refused whatever the system.
+    with pytest.raises(errors.GacruxInputError) as excinfo:
+        parse(renumbered(["192 BERGER_TEAM_ROUNDROBIN"], 4, 3))
+    assert "Record 310" in str(excinfo.value)
+    assert "1, 2, 3, 3" in str(excinfo.value)
+
+
+def test_a_four_digit_player_id_on_record_310_is_read():
+    """A player id of 1000 or more in record 310 is data, not misalignment.
+
+    TRF-2026 gives record 310 its rank in columns 69-71 and its first player in columns
+    74-77; the player ids of record 001 run "from 1 to 9999". The misalignment check
+    read line[71:74], which is columns 72-74, and column 74 is the first digit of the
+    first player id -- blank for an id below 1000, and a digit for 1000 and above. So a
+    team whose first player was numbered 1000 or more was reported as "misaligned
+    data, may be bad character encoding", status 467, for a record that is correct.
+    """
+    chessfile = parse(teams([], first=1001))
+
+    assert chessfile.get_status() == 0
+    tournament = chessfile.get_tournament(1)
+    teamone = next(team for team in tournament["competitors"] if team["cid"] == 1)
+    assert [player["cid"] for player in teamone["cplayers"]] == [1001, 1002]
+
+
 def test_a_team_tournament_without_record_310_is_refused_by_name():
     """A team tournament declared by record 192 has to have a team section.
 
@@ -245,6 +350,8 @@ def test_a_team_tournament_without_record_310_is_refused_by_name():
     assert "mandatory" in message            # and why it is being asked for
     assert "FIDE_TEAM_MP_GP" in message      # the declaration that made it mandatory
     assert chessfile.get_status() == 401
+
+
 def test_001_naming_an_opponent_who_does_not_exist():
     # The opponent of a scheduled game is a pairing number as well, and it is the one an
     # arbiter is most likely to mistype. It cannot be checked while the record is read --
@@ -269,21 +376,3 @@ def test_a_tournament_that_names_nobody_wrong_still_reads():
     assert parse(individual(["240 H 003    3"])).get_status() == 0
     assert parse(teams(["240 H 003    3",
                         "300   2   2   3    3    4"])).get_status() == 0
-
-
-def test_a_four_digit_player_id_on_record_310_is_read():
-    """A player id of 1000 or more in record 310 is data, not misalignment.
-
-    TRF-2026 gives record 310 its rank in columns 69-71 and its first player in columns
-    74-77; the player ids of record 001 run "from 1 to 9999". The misalignment check
-    read line[71:74], which is columns 72-74, and column 74 is the first digit of the
-    first player id -- blank for an id below 1000, and a digit for 1000 and above. So a
-    team whose first player was numbered 1000 or more was reported as "misaligned
-    data, may be bad character encoding", status 467, for a record that is correct.
-    """
-    chessfile = parse(teams([], first=1001))
-
-    assert chessfile.get_status() == 0
-    tournament = chessfile.get_tournament(1)
-    teamone = next(team for team in tournament["competitors"] if team["cid"] == 1)
-    assert [player["cid"] for player in teamone["cplayers"]] == [1001, 1002]

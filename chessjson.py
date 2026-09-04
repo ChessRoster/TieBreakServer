@@ -62,7 +62,30 @@ class chessjson:
 
         self.current_id = 0
         self.pid = {}  # Lookup table for id
-        self.reverse = {"W": "L", "D": "D", "L": "W", "Z": "W", "A": "A", "U": "U"}
+        # The result the other side of a game has, for a game record that carries only
+        # one side's result. get_score() and is_vur() reach this whenever a 001 record
+        # names an opponent whose own row never came back to record the same game -- a
+        # player who withdrew, most often.
+        #
+        # The letters are the score system's, not the TRF result column's: TRF-2026 gives
+        # the result column its own codes and trf2json.self.results translates them before
+        # anything is stored, so a TRF "U" (pairing-allocated bye) arrives here as "P" and
+        # a TRF "X" or "?" as "A". Every key of default_score above therefore has to
+        # appear here; a JSON event handed to the engine directly may use any of them,
+        # because the schema calls "wResult" a string and leaves the vocabulary to the
+        # score system.
+        self.reverse = {
+            "W": "L",   # a win against a loss
+            "D": "D",   # a draw against a draw
+            "L": "W",
+            "F": "Z",   # a forfeit win against the forfeit that gave it
+            "H": "H",   # a half-point bye is half a point unplayed on both sides
+            "Z": "W",
+            "P": "Z",   # a pairing-allocated bye has no opponent; a named one played
+                        # nothing and scores nothing
+            "A": "A",
+            "U": "U",
+        }
 
         if sys.version_info[0] < 3 or sys.version_info[0] == 3 and sys.version_info[1] < 8:
             self.chessjson["status"]["code"] = 500
@@ -331,6 +354,30 @@ class chessjson:
             res = slist[res]
         # print("get_score" ,  slist, result, color, res)
         return res
+
+    def recorded_result(self, result, color):
+        """The result LETTER this side of a game or match has, or None if neither side
+        recorded one.
+
+        get_score() answers the same question in points. A caller that has to know which
+        result the file recorded -- rather than what it is worth -- needs the letter, and
+        it has to reach it the same way: trf2json writes a game from one player's 001 row
+        at a time, so a record may carry only the other side's half, and this side's
+        letter is then the reverse of it. The reverse table is the one above, so there is
+        one of it.
+
+        None, and not "Z", because "neither side recorded anything" and "this side has a
+        zero" are different answers and a caller asking for the letter is asking to tell
+        them apart. (tiebreak.get_result() asks the same question and answers "Z", which
+        is what agrees with get_score() for the tie-breaks.)
+        """
+        key = color[0] + "Result"
+        if key in result:
+            return result[key]
+        other = ("b" if color[0] == "w" else "w") + "Result"
+        if result.get("black", 0) > 0 and other in result:
+            return self.reverse[result[other]]
+        return None
 
     def is_vur(self, result, color):  #
         if result["played"]:

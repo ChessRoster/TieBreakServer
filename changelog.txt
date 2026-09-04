@@ -12,6 +12,18 @@ Rewritten direct encounter, so all DE od EDE.. TBs are treated in the same funct
 
 Unreleased
 
+- Corrected Sonneborn-Berger cut modifiers to select a voluntary unplayed
+  round by its contribution, and to break a tie between equal contributions
+  by the opponent's score, as required by FIDE C.07 article 16.5. Affects
+  tournaments starting on or after 1 March 2026 only.
+- Capped the dummy opponent of an unplayed round at the points for a draw times
+  the number of rounds in the tournament (C.07 article 16.4.2), the scheduled
+  rounds rather than the round the standings are taken after. Intermediate
+  standings under the 2026 rules were capped as if the event ended at the
+  current round. Final standings are unchanged.
+- Added a tie-break value baseline over the TRF corpus, holding a broad
+  catalogue of 32 individual and 38 team tie-break calculations for every
+  competitor under both the 2024 and the 2026 rules.
 - Fixed absolute colour preferences when the colour difference is +/-1 and the
   player received the same colour in their last two played games.
 - The COP tie-break lists the colour preference of C.04.3 article 1.7 exactly

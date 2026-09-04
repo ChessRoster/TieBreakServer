@@ -11,6 +11,43 @@ import colourpreference
 import rating as rating
 from errors import GacruxInputError
 
+
+def _select_low_cut_game(games, ignore_vur_exception=False):
+    """Select the next element removed by a low cut, under C.07 articles 14 and 16.5.
+
+    Two candidates, each chosen by a different measure.
+
+    The least significant value is chosen by the opponent's score, because art.
+    14.1.1.d defines it that way: "exclude the contribution (product) associated with
+    the opponent with the lowest score - if there is more than one such opponent,
+    exclude the lowest contribution associated with them". Score first, contribution
+    only to break a tie between equal-scoring opponents.
+
+    The VUR candidate is chosen by the contribution, because art. 16.5.1 asks for "the
+    lowest contribution coming from such rounds" and says nothing about the score of
+    the dummy the contribution came from. Contribution first, opponent score only to
+    break a tie: art. 16.5.1 notes that the two candidates are "the same element if the
+    least significant value comes from a VUR", so when several VURs are level on
+    contribution the one to take is the least significant of them, not an arbitrary one.
+    Ordering the tie by score is what makes that note hold.
+
+    Art. 16.5.1 then cuts "the higher of these two values", the VUR keeping the tie
+    because its contribution need only be "not lower than the least significant value".
+    """
+    least_significant = min(games, key=lambda game: (game["score"], game["tbvalue"]))
+    if ignore_vur_exception:
+        return least_significant
+
+    lowest_vur = min(
+        (game for game in games if game["vur"]),
+        key=lambda game: (game["tbvalue"], game["score"]),
+        default=None,
+    )
+    if lowest_vur is not None and lowest_vur["tbvalue"] >= least_significant["tbvalue"]:
+        return lowest_vur
+    return least_significant
+
+
 """
 Structure
 
@@ -1120,7 +1157,14 @@ class tiebreak:
                             if opponent > 0:  # 16.4.1
                                 score = min(score, cmps[opponent]["tbval"][oprefix + "abh"]["val"])
                             else:             # 16.4.2
-                                score = min(score, opointsfordraw * rounds)
+                                # "the points awarded for a draw multiplied by the number of
+                                # rounds in the tournament": the scheduled rounds, a property
+                                # of the event, not the round the standings are taken after.
+                                # rounds here is the current round, which is what the
+                                # rnd <= rounds filters and the cut clamps mean; the cap is
+                                # not. When record 142 is absent trf2json infers numRounds
+                                # from the last played round, so there the two coincide.
+                                score = min(score, opointsfordraw * self.rounds)
                     else:
                         score = 0
                     if tb["modifiers"].get("urd", False) and not self.rr:
@@ -1146,14 +1190,9 @@ class tiebreak:
             while low > 0:
                 if len(bhvalue) == 0:  # the cut is larger than the number of games of this competitor
                     break
-                sortall = sorted(bhvalue, key=lambda game: (game["score"], game["tbvalue"]))
-                sortexp = sorted(bhvalue, key=lambda game: (-game["vur"], game["score"], game["tbvalue"]))
-                if vun or sortall[0]["tbvalue"] > sortexp[0]["tbvalue"]:
-                    bhvalue = sortall[1:]
-                    tbscore[oprefix + name]["cut"].append(sortall[0]["rnd"])
-                else:
-                    bhvalue = sortexp[1:]
-                    tbscore[oprefix + name]["cut"].append(sortexp[0]["rnd"])
+                cut_game = _select_low_cut_game(bhvalue, vun)
+                bhvalue.remove(cut_game)
+                tbscore[oprefix + name]["cut"].append(cut_game["rnd"])
                 low -= 1
 
             while high > 0:
@@ -1737,4 +1776,3 @@ class tiebreak:
                 return ["match", "mpoints", self.matchscore, "mpoints_"]
         else:
                 return ["game", "points", self.gamescore, "points_"]
-

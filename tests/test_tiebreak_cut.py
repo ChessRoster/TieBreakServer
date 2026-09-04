@@ -6,13 +6,33 @@ The cut is limited by the number of rounds, not by the number of games the compe
 actually has. A competitor who withdrew, entered late or was given byes has fewer games
 than that, so a cut can consume every game he has.
 """
+import contextlib
+import io
+import os
+import sys
+import tempfile
+from decimal import Decimal
+
 import pytest
 
 import tiebreak
+import tiebreakchecker
 import trf2json
 
 PAB = (0, "-", "U")  # pairing-allocated bye
+HPB = (0, "-", "H")  # half-point bye
 ZPB = (0, "-", "Z")  # zero-point bye
+
+_FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
+REAL_SWISS = os.path.join(_FIXTURES, "swiss_with_many_unplayed_rounds.trf")
+GOLDEN_BEFORE = os.path.join(_FIXTURES, "swiss_with_many_unplayed_rounds.2026-02-28.txt")
+GOLDEN_ON = os.path.join(_FIXTURES, "swiss_with_many_unplayed_rounds.2026-03-01.txt")
+GOLDEN_ON_UPSTREAM = os.path.join(
+    _FIXTURES, "swiss_with_many_unplayed_rounds.2026-03-01.upstream.txt")
+GOLDEN_ALL_BEFORE = os.path.join(
+    _FIXTURES, "swiss_with_many_unplayed_rounds.2026-02-28.all.txt")
+GOLDEN_ALL_ON = os.path.join(
+    _FIXTURES, "swiss_with_many_unplayed_rounds.2026-03-01.all.txt")
 
 
 def player_line(startno, name, rating, points, games):
@@ -54,14 +74,29 @@ def withdrawal_after_round_1():
     return lines
 
 
-def compute(lines, tiebreaks):
+def run(lines, tiebreaks, check=False, swiss=False, currentround=-1):
+    # swiss picks the unplayed-round rules of article 16 over the pre-determined pairing
+    # rules, the way -s does on the command line. currentround is the round the standings
+    # are taken after; -1 is the final standings, the way -n does.
     chessfile = trf2json.trf2json()
     chessfile.parse_file("\n".join(lines), True)
     tournament = chessfile.get_tournament(1)
-    params = {"tiebreak": tiebreaks, "check": False, "unrated": None, "pre_determined": True}
-    tb = tiebreak.tiebreak(tournament, -1, params)
-    result = tb.compute_tiebreaks(tournament, params)
+    params = {"tiebreak": tiebreaks, "check": check, "unrated": None,
+              "pre_determined": not swiss, "swiss": swiss}
+    tb = tiebreak.tiebreak(tournament, currentround, params)
+    return tb.compute_tiebreaks(tournament, params)
+
+
+def compute(lines, tiebreaks, swiss=False):
+    result = run(lines, tiebreaks, swiss=swiss)
     return dict([(cmp["cid"], str(cmp["tiebreakScore"][0])) for cmp in result["competitors"]])
+
+
+def cut_rounds(lines, tiebreakname, startno, swiss=False):
+    # The rounds a single cut modifier dropped, in the order it dropped them.
+    result = run(lines, [tiebreakname], True, swiss=swiss)
+    competitor = [cmp for cmp in result["competitors"] if cmp["cid"] == startno][0]
+    return competitor["tiebreakDetails"][0]["cut"]
 
 
 def test_buchholz_of_the_field():
@@ -109,6 +144,83 @@ def test_sonneborn_berger_cuts():
     }
 
 
+def test_sonneborn_berger_vur_candidate_is_selected_by_contribution():
+    # C.07 articles 14.1.1.d and 16.5 require two different candidates:
+    #
+    # * the ordinary candidate is the contribution associated with the opponent
+    #   having the lowest score (round 10 here: 2.50), and
+    # * the VUR candidate is the lowest contribution from a VUR (round 4: 0.00),
+    #   regardless of the dummy scores attached to those VURs.
+    #
+    # The March 2026 caps can give VURs different dummy scores. Selecting a VUR by
+    # dummy score would wrongly choose round 1 (2.75) and produce 31.25. Article
+    # 16.5 instead compares 0.00 with 2.50 and cuts the latter, producing 31.50.
+    games = [
+        {"vur": True, "score": Decimal("5.50"), "tbvalue": Decimal("2.75"), "rnd": 1},
+        {"vur": True, "score": Decimal("6.00"), "tbvalue": Decimal("0.00"), "rnd": 4},
+        {"vur": False, "score": Decimal("2.50"), "tbvalue": Decimal("2.50"), "rnd": 10},
+        {"vur": False, "score": Decimal("5.00"), "tbvalue": Decimal("5.00"), "rnd": 2},
+        {"vur": False, "score": Decimal("4.50"), "tbvalue": Decimal("4.50"), "rnd": 3},
+        {"vur": False, "score": Decimal("3.50"), "tbvalue": Decimal("3.50"), "rnd": 5},
+        {"vur": False, "score": Decimal("4.00"), "tbvalue": Decimal("4.00"), "rnd": 6},
+        {"vur": False, "score": Decimal("3.50"), "tbvalue": Decimal("3.50"), "rnd": 7},
+        {"vur": False, "score": Decimal("3.00"), "tbvalue": Decimal("3.00"), "rnd": 8},
+        {"vur": False, "score": Decimal("2.75"), "tbvalue": Decimal("2.75"), "rnd": 9},
+        {"vur": False, "score": Decimal("2.75"), "tbvalue": Decimal("2.50"), "rnd": 11},
+    ]
+
+    cut_game = tiebreak._select_low_cut_game(games)
+
+    assert cut_game["rnd"] == 10
+    assert sum(game["tbvalue"] for game in games if game is not cut_game) == Decimal("31.50")
+
+
+def test_art_16_5_1_breaks_a_tie_between_vurs_by_the_opponent_score():
+    # Three VURs level on contribution at 0.00, against dummies scoring 2.5, 1.5 and
+    # 2.5. Article 16.5.1 asks for "the lowest contribution coming from such rounds",
+    # which all three are, and notes that the candidates are "the same element if the
+    # least significant value comes from a VUR". Here they are: round 2 is the least
+    # significant value under 14.1.1.d, its dummy scoring the lowest of everything on
+    # the list, and it is a VUR. So round 2 is the element to cut, not round 1.
+    #
+    # Cutting round 1 instead removes the same 0.00, so a single cut cannot tell the
+    # two apart - it leaves round 2 in the list, and the next cut then finds a least
+    # significant value of 0.00 rather than round 5's 1.00. That is the whole of the
+    # difference, and it only shows from the second cut on.
+    games = [
+        {"vur": True, "score": Decimal("2.5"), "tbvalue": Decimal("0.00"), "rnd": 1},
+        {"vur": True, "score": Decimal("1.5"), "tbvalue": Decimal("0.00"), "rnd": 2},
+        {"vur": True, "score": Decimal("2.5"), "tbvalue": Decimal("0.00"), "rnd": 3},
+        {"vur": False, "score": Decimal("2.5"), "tbvalue": Decimal("2.50"), "rnd": 4},
+        {"vur": False, "score": Decimal("2.0"), "tbvalue": Decimal("1.00"), "rnd": 5},
+        {"vur": False, "score": Decimal("2.5"), "tbvalue": Decimal("1.25"), "rnd": 6},
+        {"vur": False, "score": Decimal("2.5"), "tbvalue": Decimal("1.25"), "rnd": 7},
+    ]
+    total = sum(game["tbvalue"] for game in games)
+    assert total == Decimal("6.00")
+
+    first = tiebreak._select_low_cut_game(games)
+    assert first["rnd"] == 2
+    assert total - first["tbvalue"] == Decimal("6.00")      # Cut-1: 6.00 - 0.00
+
+    # 16.5.2, on what is left. The least significant value is now round 5's 1.00, and
+    # the lowest contribution from a VUR is 0.00, which is lower - so the exception
+    # does not apply and the ordinary candidate goes.
+    games.remove(first)
+    second = tiebreak._select_low_cut_game(games)
+    assert second["rnd"] == 5
+    assert total - first["tbvalue"] - second["tbvalue"] == Decimal("5.00")   # Cut-2
+
+
+def test_equal_vur_contribution_is_cut_as_not_lower():
+    # Article 16.5 says the VUR is cut when its contribution is "not lower" than
+    # the ordinary candidate, so equality belongs to the VUR side of the comparison.
+    ordinary = {"vur": False, "score": Decimal("1.00"), "tbvalue": Decimal("1.00"), "rnd": 1}
+    vur = {"vur": True, "score": Decimal("4.00"), "tbvalue": Decimal("1.00"), "rnd": 2}
+
+    assert tiebreak._select_low_cut_game([ordinary, vur]) is vur
+
+
 @pytest.mark.parametrize("tb", ["BH/C5", "SB/C5"])
 def test_cut_of_every_round(tb):
     # A cut of every round leaves nobody with a game, whatever he played.
@@ -124,3 +236,342 @@ def test_cut_inside_the_number_of_games_is_unchanged():
         4: "7.5",    # 4.5 + 3.0           (2.5 dropped)
         5: "0",      # his one game dropped
     }
+
+
+def swiss_with_absences(round3, startdate="2026-03-01"):
+    # Swiss, five players, four rounds, dated by startdate. Player 2
+    # takes a half-point bye in round 2 and plays his round 3 as round3 says: "-" is a
+    # forfeit loss and gives him a second VUR (art. 16.1.2), "0" is an ordinary loss and
+    # leaves him with one. Nothing else changes, every score included.
+    #
+    # Art. 16.4 caps the two VURs differently - the bye at the points for a draw times
+    # the number of rounds, 0.5 * 4 = 2.0 (art. 16.4.2), the forfeit at the scheduled
+    # opponent's adjusted score, 4.0, which leaves player 2's own 2.5 (art. 16.4.1). So
+    # the bye is the VUR against the lower-scoring dummy while the forfeit is the VUR
+    # with the lower contribution, and the two candidates come apart.
+    #
+    # Player 2's four elements, as opponent score x own result:
+    #     round 1  0.5 x 1.0 = 0.50   played, opponent 5 scored 0.5
+    #     round 2  2.0 x 0.5 = 1.00   VUR, half-point bye
+    #     round 3  2.5 x 0.0 = 0.00   VUR when forfeited, opponent 1 scored 4.0 when not
+    #     round 4  1.5 x 1.0 = 1.50   played, opponent 4 scored 1.5
+    #
+    # Rounds 2 and 3 are the two the caps touch, so a startdate before 2026-03-01
+    # gives both of them player 2's own 2.5 instead. See the boundary test below.
+    forfeited = round3 == "-"
+    lines = ["012 Sonneborn-Berger cut with a requested absence", "022 Oslo", "032 NOR",
+             "042 " + startdate, "052 2026-03-04", "062 5", "072 0", "092 Swiss System",
+             "XXR 4"]
+    lines.append(player_line(1, "Winner, Wanda", 2400, "4.0",
+                             [(4, "w", "1"), (3, "b", "1"),
+                              (2, "w", "+" if forfeited else "1"), (5, "b", "1")]))
+    lines.append(player_line(2, "Cutcase, Cato", 2300, "2.5",
+                             [(5, "w", "1"), HPB, (1, "b", round3), (4, "w", "1")]))
+    lines.append(player_line(3, "Middle, Mons", 2200, "2.0",
+                             [PAB, (1, "w", "0"), (5, "w", "1"), ZPB]))
+    lines.append(player_line(4, "Lower, Lars", 2100, "1.5",
+                             [(1, "b", "0"), (5, "b", "="), PAB, (2, "b", "0")]))
+    lines.append(player_line(5, "Tailend, Tor", 2000, "0.5",
+                             [(2, "b", "0"), (4, "w", "="), (3, "b", "0"), (1, "w", "0")]))
+    return lines
+
+
+def two_requested_absences():
+    return swiss_with_absences("-")
+
+
+def one_requested_absence():
+    return swiss_with_absences("0")
+
+
+def test_art_16_5_1_selects_the_vur_by_contribution_not_by_opponent_score():
+    # Art. 16.5.1: "When a modifier calls for cutting the least significant value (see
+    # Articles 14.1 to 14.4) of a participant with one or more VURs, the lowest
+    # contribution coming from such rounds shall be cut, as long as such contribution is
+    # not lower than the least significant value." The handbook spells the comparison
+    # out for Sonneborn-Berger: determine the lowest contribution coming from a VUR and
+    # the least significant value (art. 14.1.1.d), then "cut the higher of these two
+    # values".
+    #
+    # For player 2 the lowest contribution coming from a VUR is round 3's 0.00, not
+    # round 2's 1.00: art. 16.5.1 ranks the VURs by contribution, and the lower dummy
+    # score behind round 2 does not make it the candidate. The least significant value
+    # is round 1's 0.50, the contribution against the lowest-scoring opponent. The
+    # higher of 0.00 and 0.50 is 0.50, so round 1 is cut and 2.50 is left.
+    assert compute(two_requested_absences(), ["SB"], swiss=True)[2] == "3.00"
+    assert compute(two_requested_absences(), ["SB/C1"], swiss=True)[2] == "2.50"
+    assert cut_rounds(two_requested_absences(), "SB/C1", 2, swiss=True) == [1]
+
+
+def test_art_16_5_2_reapplies_the_exception_to_the_remaining_elements():
+    # Art. 16.5.2: "Rule 16.5.1 applies again to the remaining elements when the
+    # modifier requires more cuts." Rounds 2, 3 and 4 remain after the first cut. The
+    # lowest contribution coming from a VUR is still round 3's 0.00; the least
+    # significant value is now round 4's 1.50, against the lowest-scoring opponent left.
+    # The higher of the two is 1.50, so round 4 goes and 1.00 is left.
+    assert compute(two_requested_absences(), ["SB/C2"], swiss=True)[2] == "1.00"
+    assert cut_rounds(two_requested_absences(), "SB/C2", 2, swiss=True) == [1, 4]
+
+
+def test_art_16_5_1_leaves_a_single_vur_cut_alone():
+    # With one VUR there is nothing to rank, so the exception behaves as it always has.
+    # The only contribution coming from a VUR is round 2's 1.00 and the least
+    # significant value is round 1's 0.50; the higher is 1.00, so the VUR is cut. The
+    # second cut has no VUR left and falls back to art. 14.1.1.d alone, taking round 1.
+    assert compute(one_requested_absence(), ["SB"], swiss=True)[2] == "3.00"
+    assert compute(one_requested_absence(), ["SB/C1"], swiss=True)[2] == "2.00"
+    assert compute(one_requested_absence(), ["SB/C2"], swiss=True)[2] == "1.50"
+    assert cut_rounds(one_requested_absence(), "SB/C1", 2, swiss=True) == [2]
+    assert cut_rounds(one_requested_absence(), "SB/C2", 2, swiss=True) == [2, 1]
+
+
+def test_art_16_4_caps_apply_from_the_start_date_of_the_2026_rules():
+    # Art. 16.4: "To calculate the participant's own tie-break, each of their unplayed
+    # rounds is evaluated as if the participant had played against a dummy [...] The
+    # dummy's score for the tie-break calculation is the participant's own score.
+    # However, it shall not exceed: 16.4.1 the scheduled opponent's adjusted score (see
+    # Article 16.3), for unplayed rounds of categories 16.2.2 and 16.2.4 (forfeits);
+    # 16.4.2 the points awarded for a draw multiplied by the number of rounds in the
+    # tournament, for all other unplayed rounds".
+    #
+    # Those caps arrived with the rules of 2026-03-01, and find_tmversion picks the rule
+    # set from the tournament's start date. The engine therefore has to give the same
+    # file two different answers either side of that date, which is what this pins.
+    #
+    # Player 2 scores 2.5 and there are four rounds, so under the 2026 rules the bye is
+    # capped at 0.5 * 4 = 2.0 and the forfeit keeps his own 2.5. Without the caps both
+    # dummies take his own 2.5, and the bye contributes 2.5 * 0.5 = 1.25 rather than
+    # 1.00. That is the whole of the difference: 3.25 against 3.00.
+    before = swiss_with_absences("-", "2026-02-28")
+    on_the_day = swiss_with_absences("-", "2026-03-01")
+
+    assert compute(before, ["SB"], swiss=True)[2] == "3.25"
+    assert compute(on_the_day, ["SB"], swiss=True)[2] == "3.00"
+
+    # The cuts move with the caps. Before the caps the two VURs share one dummy score, so
+    # the lowest-scoring VUR and the lowest-contribution VUR cannot come apart and the
+    # ordinary art. 14.1.1.d candidate wins both cuts.
+    assert compute(before, ["SB/C1"], swiss=True)[2] == "2.75"
+    assert compute(before, ["SB/C2"], swiss=True)[2] == "1.25"
+    assert cut_rounds(before, "SB/C1", 2, swiss=True) == [1]
+    assert cut_rounds(before, "SB/C2", 2, swiss=True) == [1, 4]
+
+    assert compute(on_the_day, ["SB/C1"], swiss=True)[2] == "2.50"
+    assert compute(on_the_day, ["SB/C2"], swiss=True)[2] == "1.00"
+
+
+def checker_output(lines, tiebreaks):
+    # Drive the real command-line checker in-process, the way tests/corpus/_harness.py
+    # does, so a golden file is byte for byte what
+    #     python tiebreakchecker.py -i FILE -o OUT -c -dT -t PTS SB SB/C1 SB/C2
+    # writes. Comparing whole outputs rather than a dict of values keeps the golden
+    # reviewable in a diff and catches a change of rank or of the Check line too.
+    workdir = tempfile.mkdtemp()
+    source = os.path.join(workdir, "tournament.trf")
+    output = os.path.join(workdir, "tiebreaks.txt")
+    with open(source, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines))
+    saved_argv = sys.argv
+    sys.argv = ["tiebreakchecker", "-i", source, "-o", output, "-c", "-dT", "-t"] + tiebreaks
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            try:
+                tiebreakchecker.tiebreakchecker().common_main()
+            except SystemExit:
+                pass
+    finally:
+        sys.argv = saved_argv
+    with open(output, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def golden(path):
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def real_swiss(startdate=None):
+    # Fifteen players, seven rounds, a real Swiss with names, federation, identifiers and
+    # birth dates removed. It is thick with unplayed rounds - half-point byes, zero-point
+    # byes, pairing-allocated byes and forfeits on both sides - which is what makes it
+    # worth keeping: the article 16 paths are exercised on a real pairing history rather
+    # than on a fixture built to reach them.
+    #
+    # The file is dated 2026-02-28, the last day before the March 2026 rules, so as it
+    # stands it runs under the rules of 2024-08-01. startdate re-dates it in memory.
+    lines = open(REAL_SWISS, encoding="utf-8").read().split("\n")
+    if startdate is None:
+        return lines
+    return [("042 " + startdate) if line.startswith("042 ") else line for line in lines]
+
+
+TIEBREAKS = ["PTS", "SB", "SB/C1", "SB/C2"]
+
+
+def test_a_real_swiss_the_day_before_the_2026_rules():
+    # 2026-02-28: no article 16.4 cap applies, so every VUR of a participant takes that
+    # participant's own score as its dummy. Nothing here depends on how VURs are ranked
+    # against each other, because without the caps they cannot be ranked apart - this
+    # golden is the same on the upstream implementation and on this branch.
+    assert checker_output(real_swiss(), TIEBREAKS) == golden(GOLDEN_BEFORE)
+
+
+def test_a_real_swiss_on_the_day_the_2026_rules_start():
+    # 2026-03-01: the caps apply. This golden is a baseline of what this branch produces,
+    # not a claim that every cell of it is right - start number 4's SB/C2 is the known
+    # article 16.5.1 tie-break defect recorded in the expected failure at the end of this
+    # file, and regenerate this golden when that is fixed.
+    assert checker_output(real_swiss("2026-03-01"), TIEBREAKS) == golden(GOLDEN_ON)
+
+
+def changed_rows(left, right):
+    # The start numbers whose row differs between two checker outputs, plus any change to
+    # the trailing Check line.
+    lrows = left.rstrip("\n").split("\n")
+    rrows = right.rstrip("\n").split("\n")
+    assert len(lrows) == len(rrows), "outputs have different shapes"
+    changed = set()
+    for lrow, rrow in zip(lrows, rrows):
+        if lrow != rrow:
+            key = lrow.split("\t")[0]
+            changed.add("Check" if key.startswith("Check") else key)
+    return changed
+
+
+def test_the_2026_caps_change_this_tournament():
+    # What crossing 2026-03-01 does to one real tournament: nine of the fifteen move,
+    # four of them change rank, and the standings no longer match the order the file
+    # declares, so the checker's own consistency check goes from True to False.
+    assert changed_rows(golden(GOLDEN_BEFORE), golden(GOLDEN_ON)) == {
+        "1", "3", "4", "5", "9", "10", "11", "12", "14", "Check",
+    }
+    assert golden(GOLDEN_BEFORE).endswith("Check: True\n")
+    assert golden(GOLDEN_ON).endswith("Check: False\n")
+
+
+def test_the_two_selectors_agree_on_this_tournament():
+    # They did not always. Before the art. 16.5.1 tie-break was corrected, this branch
+    # gave start number 4 an SB/C2 of 6.00 where upstream gave 5.00 - the whole of the
+    # difference on this file, and upstream was right. It is now byte-identical.
+    #
+    # The disagreement this branch does still have with upstream is confined to the
+    # constructed tournament earlier in this file, where a half-point bye and a forfeit
+    # loss take different dummy scores and the two candidates genuinely come apart.
+    # Keeping the upstream golden pins that: reintroduce the tie-break bug and this
+    # fails, naming the competitor.
+    assert golden(GOLDEN_ON) == golden(GOLDEN_ON_UPSTREAM)
+    assert changed_rows(golden(GOLDEN_ON_UPSTREAM), golden(GOLDEN_ON)) == set()
+    assert "4\t12\t2.5\t6.00\t6.00\t5.00" in golden(GOLDEN_ON)
+
+
+def test_art_16_5_1_ties_among_equal_vur_contributions_go_to_the_lowest_opponent_score():
+    # Start number 4 forfeited rounds 1, 2 and 3, so all three are VURs contributing
+    # 0.00, but art. 16.4.1 caps their dummy scores at the scheduled opponent's adjusted
+    # score and gives them 2.5, 1.5 and 2.5. His seven elements are:
+    #
+    #     round 1  2.5 x 0.0 = 0.00   VUR, forfeit loss
+    #     round 2  1.5 x 0.0 = 0.00   VUR, forfeit loss   <- least significant value
+    #     round 3  2.5 x 0.0 = 0.00   VUR, forfeit loss
+    #     round 4  2.5 x 1.0 = 2.50   pairing-allocated bye
+    #     round 5  2.0 x 0.5 = 1.00   played
+    #     round 6  2.5 x 0.5 = 1.25   played
+    #     round 7  2.5 x 0.5 = 1.25   played
+    #
+    # Round 2 is the least significant value - its opponent's score, 1.5, is the lowest -
+    # and it is itself a VUR, so by art. 16.5.1's "they are the same element if the least
+    # significant value comes from a VUR" it is the element the first cut must take.
+    #
+    # Cut-1 removes 0.00 either way, so SB/C1 is 6.00 whichever element goes. Cut-2 is
+    # where it shows. With round 2 gone the least significant value left is round 5's
+    # 1.00, and the lowest remaining VUR contribution, 0.00, is lower than that, so
+    # art. 16.5.1 does not apply and the ordinary candidate is cut: 6.00 - 1.00 = 5.00.
+    # Cutting round 1 first instead leaves round 2 in the pool and takes another 0.00.
+    assert compute(real_swiss("2026-03-01"), ["SB/C2"], swiss=True)[4] == "5.00"
+
+
+# Every family of tie-break the engine computes for an individual tournament. The two
+# goldens below hold the whole lot against this one real pairing history, so a change
+# anywhere in the tie-break code has to be acknowledged, not only a change in the cuts.
+ALL_TIEBREAKS = [
+    "PTS", "WIN", "WON", "BWG", "BPG", "VUR", "NUM", "DE", "PS", "PS/C1", "KS",
+    "BH", "BH/C1", "BH/C2", "BH/M1", "BH/M2", "ABH", "AOB", "FB",
+    "SB", "SB/C1", "SB/C2", "SB/M1", "SB/M2", "ESB",
+    "ARO", "ARO/C1", "TPR", "PTP", "APRO", "COP", "CSQ",
+]
+
+
+def test_a_real_swiss_across_every_tiebreak_the_day_before():
+    assert checker_output(real_swiss(), ALL_TIEBREAKS) == golden(GOLDEN_ALL_BEFORE)
+
+
+def test_a_real_swiss_across_every_tiebreak_on_the_day():
+    assert checker_output(real_swiss("2026-03-01"), ALL_TIEBREAKS) == golden(GOLDEN_ALL_ON)
+
+
+def test_the_2026_rules_move_more_than_the_cuts():
+    # Which tie-breaks the March 2026 rules actually disturb on this tournament. The
+    # unplayed-round rules of article 16 reach everything derived from an opponent's
+    # score, so the plain Buchholz and Sonneborn-Berger move too, not only the cuts.
+    before = golden(GOLDEN_ALL_BEFORE).rstrip("\n").split("\n")
+    on = golden(GOLDEN_ALL_ON).rstrip("\n").split("\n")
+    header = before[0].split("\t")
+    assert header == on[0].split("\t")
+    moved = set()
+    for lrow, rrow in zip(before[1:], on[1:]):
+        left, right = lrow.split("\t"), rrow.split("\t")
+        if len(left) != len(header):
+            continue                      # the trailing Check line
+        for name, a, b in zip(header, left, right):
+            if a != b:
+                moved.add(name)
+    assert moved == {"BH", "BH/C1", "BH/C2", "BH/M1", "BH/M2", "AOB", "FB",
+                     "SB", "SB/C1", "SB/C2", "SB/M1", "SB/M2", "ESB"}
+    # ABH does not move: it is the competitor's own adjusted score, which article 16.3
+    # governs, while the caps of article 16.4 only bound the dummy opponent's score.
+    # Nor does Rank: with this many tie-breaks the order is settled long before the
+    # Buchholz family is reached, which is why the four-tie-break golden above does see
+    # the ranks shift and this one does not.
+
+
+def buchholz_after_round(startno, currentround):
+    # One competitor's Buchholz in the standings after currentround, and the element each
+    # round contributed to it. The details are keyed by the round number as a string.
+    result = run(real_swiss("2026-03-01"), ["BH"], check=True, swiss=True,
+                 currentround=currentround)
+    competitor = [cmp for cmp in result["competitors"] if cmp["cid"] == startno][0]
+    details = competitor["tiebreakDetails"][0]
+    rounds = 7 if currentround < 0 else currentround
+    return competitor["tiebreakScore"][0], {rnd: details[str(rnd)] for rnd in range(1, rounds + 1)}
+
+
+def test_art_16_4_2_caps_the_dummy_at_the_scheduled_rounds_not_the_current_round():
+    """C.07 art. 16.4.2: the dummy's score "shall not exceed ... the points awarded for a
+    draw multiplied by the number of rounds in the tournament, for all other unplayed
+    rounds" - the tournament's, a property of the event, not of the standings being
+    taken. Seven rounds are scheduled, so the cap is 0.5 * 7 = 3.5 whichever round the
+    standings are after.
+
+    Start number 12 has 3.0 after four rounds, with byes in rounds 1, 2 and 4 and one game
+    played, in round 3 against a player on 1.5. His own 3.0 is under the cap, so every
+    dummy takes it: 3.0 + 3.0 + 1.5 + 3.0 = 10.5. Capping at a draw times the CURRENT
+    round instead, 0.5 * 4 = 2.0, held each dummy to 2.0 and gave 7.5 - the value of a
+    four-round tournament, which this is not.
+    """
+    value, elements = buchholz_after_round(12, 4)
+
+    assert value == Decimal("10.5")
+    assert elements == {1: Decimal("3.0"), 2: Decimal("3.0"), 3: Decimal("1.5"), 4: Decimal("3.0")}
+
+    # The final standings do not move: with the tournament over, the current round is
+    # the scheduled one and the two readings coincide. Start number 12 finishes on 4.0,
+    # so there the cap does bite, at 3.5 in every unplayed round.
+    value, elements = buchholz_after_round(12, -1)
+    assert value == Decimal("24.5")
+    assert set(elements[rnd] for rnd in (1, 2, 4, 5, 6, 7)) == {Decimal("3.5")}
+
+    # And the cap still bites in intermediate standings when a score exceeds it. Start
+    # number 9 is on 4.0 after six rounds with byes in rounds 3 and 6: both dummies are
+    # held to 3.5, not given his 4.0. A cap at the current round would hold them to 3.0.
+    value, elements = buchholz_after_round(9, 6)
+    assert (elements[3], elements[6]) == (Decimal("3.5"), Decimal("3.5"))
+    assert value == Decimal("21.0")

@@ -1185,6 +1185,30 @@ class trf2json(chessjson.chessjson):
             message = "Record 352 must contain a non-empty colour sequence using only W and B"
             self.put_status(401, message)
             raise GacruxInputError(message)
+        if seq[0] != "W":
+            # C.04.6 art. 1.6.1 - "A team is said to have (had) a colour (White or Black)
+            # in a match if the match was actually played and the player on the first
+            # board was scheduled to play with that colour." The sequence gives the
+            # colours of the players of the team the pairing designated White, so a
+            # sequence leading with Black puts that team's first board on Black, and art.
+            # 1.6.1 then says the designated White team had Black.
+            #
+            # The engine counts a team's colour difference from the designation, which is
+            # art. 1.6.1's colour for every sequence that leads with White and its negative
+            # for one that does not. Such a file would be scored with every colour
+            # difference inverted, and art. 1.7, [C8], [C9] and the whole of art. 4 read
+            # that difference - so it is refused rather than answered wrongly. No
+            # competition is known to seat the designated White team's first board on
+            # Black; if one does, art. 1.6.1 has to be read off teamColor and not off the
+            # designation, and this is the line that says so.
+            message = (
+                "Record 352 must lead with W: the board sequence gives the colours of the"
+                + " team the pairing designates White, and C.04.6 art. 1.6.1 takes a"
+                + " team's colour from its first board, so a sequence beginning " + seq[0]
+                + " would make the two disagree"
+            )
+            self.put_status(401, message)
+            raise GacruxInputError(message)
         tournament["teamSize"] = len(seq)
         tournament["teamColor"] = seq[0]
         tournament["teamSequence"] = seq
@@ -1931,8 +1955,16 @@ class trf2json(chessjson.chessjson):
         001 records produced, so the games left on a bye say which record made it and not
         whether anything happened.
 
-        This rejects the event, not a team, so the message has to be one somebody can act
-        on: which team, which rounds were counted, and both figures.
+        A disagreement is reported and not refused. A standing that differs from the
+        results is the ordinary shape of a file carrying an arbiter's decision - a team
+        docked for not appearing, a penalty, a fine - and TRF-2026 has record 299,
+        Abnormal Assignment points, for exactly that. The declared standing is what the
+        arbiter published, so it is the one kept; the recomputed figure is reported beside
+        it. Refusing would throw away a whole event, and every number in it, over a file
+        with nothing wrong with it.
+
+        The message has to be one somebody can act on: which team, which rounds were
+        counted, and both figures.
         """
         competitors = {competitor["cid"]: competitor for competitor in tournament["competitors"]}
         calculated_match = {cid: Decimal("0.0") for cid in competitors}
@@ -1987,9 +2019,29 @@ class trf2json(chessjson.chessjson):
             message = (
                 "Record 310 disagrees with the results of " + self.describe_rounds(played)
                 + ": " + "; ".join(problems)
+                + ". The declared standing is used; see record 299 for assignments that"
+                + " make the two differ on purpose"
             )
-            self.put_status(401, message)
-            raise GacruxInputError(message)
+            self.report_info(message)
+
+    def report_info(self, message):
+        """Record a message that does not stop the file being read.
+
+        put_status() writes the status code and appends to "error", which is the fatal
+        channel: anything in it is a fault. "info" is the other one - commonmain writes it
+        out beside the errors and leaves the code alone - and it is where a remark about a
+        file that is going to be read anyway belongs. It is created here if the caller has
+        not made it, and kept a list either way, because the two builders of the status
+        block disagree about its shape.
+        """
+        status = self.chessjson["status"]
+        existing = status.get("info")
+        if isinstance(existing, list):
+            existing.append(message)
+        elif existing:
+            status["info"] = [existing, message]
+        else:
+            status["info"] = [message]
 
     # ==============================
     #

@@ -79,6 +79,36 @@ def test_record_352_requires_a_nonempty_board_colour_sequence(record):
         read(team_file(record))
 
 
+@pytest.mark.parametrize("seq", ["BW", "BWWB", "B"])
+def test_record_352_must_lead_with_white(seq):
+    """A board sequence that starts with Black makes art. 1.6.1 disagree with the pairing.
+
+    Record 352 gives the colours of the players of the team the pairing designated White.
+    C.04.6 art. 1.6.1 takes a team's colour from its first board instead -- "the player on
+    the first board was scheduled to play with that colour" -- so the two agree only while
+    board one of the designated White team is on White.
+
+    Turn the sequence round and they part company: with "BW" the designated White team's
+    first board plays Black, so art. 1.6.1 calls that team Black. Read as WB against BW,
+    the same nine-team fixture pairs round one (1,5) (3,7) (6,2) (8,4) and (5,1) (7,3)
+    (2,6) (4,8) -- every match colour reversed, and with it every colour difference that
+    art. 1.7, [C8], [C9] and art. 4 go on to read.
+
+    The reader refuses rather than answer with every colour inverted.
+    """
+    with pytest.raises(errors.GacruxInputError, match="must lead with W"):
+        read(team_file("352 " + seq))
+
+
+def test_record_352_leading_with_white_is_read():
+    """The control: the same record, the right way round, sets the size and the colour."""
+    tournament = read(team_file("352 WBBW")).get_tournament(1)
+
+    assert tournament["teamSequence"] == "WBBW"
+    assert tournament["teamColor"] == "W"
+    assert tournament["teamSize"] == 4
+
+
 def test_record_352_is_team_only():
     """TRF-2026 defines the board sequence for team competitions."""
     with open("tests/fixtures/no_colour_preference.trf", encoding="latin1") as handle:

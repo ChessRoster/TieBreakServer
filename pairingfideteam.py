@@ -481,12 +481,27 @@ class pairing_fideteam(pairing):
         upfloaters = []
         for edge in pairs:
             for cid in [edge["ca"], edge["cb"]]:
-                if self.competitors[cid]["scorelevel"] < scorelevel:
+                # cid 0 is the dummy the bye is paired against, not a team, so it is never
+                # an upfloater - art. 3.5.1 reads on teams. A file that declares a second
+                # pairing-allocated bye in one round leaves a second edge on the dummy,
+                # and without this test it reached pair_bracket's sort on "tpn", which
+                # assign_tpn gives to the teams only, and the checker died there.
+                if cid and self.competitors[cid]["scorelevel"] < scorelevel:
                     upfloaters.append(self.competitors[cid])
         return (upfloaters, pairs)
 
     """
     select_upfloaters - art. 3.5, the selection of the upfloaters for the top-scoregroup
+
+    The cost of this is worth knowing. The loop below stops at the first set that complies
+    with [C6] and floats nobody who floated last round, which is the ordinary case and ends
+    after a handful of sets. Where no set can manage the second of those - every potential
+    upfloater floated in the round before, which the lower brackets of a large event do
+    produce - there is nothing to stop early on, and every set of the size the profile asks
+    for is enumerated and paired. Measured on a bracket forced into that shape: 14 teams
+    0.07s, 34 teams 3.4s, 66 teams 58s. Ordinary play does not reach it - a full 101-team,
+    11-round event pairs in under 1.5s a round - but a very large field in that shape is
+    slow, and it is the search, not the matching, that is slow.
 
     3.5.1 every team with a lower score than the residents is a potential upfloater
     3.5.2 consider all the sets of potential upfloaters that comply with [C4] and [C5],

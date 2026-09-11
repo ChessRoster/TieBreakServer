@@ -9,7 +9,10 @@ The team system is not the Dutch system with a team where a player used to be, a
 crosstable_dutch cannot be reused for it:
 
   * art. 1.6 - a team "had" a colour in a match only if the match was actually played,
-    and the colour is the one the player on the first board was scheduled to play.
+    and the colour is the one the player on the first board was scheduled to play. The
+    colour used here is the one the pairing designated, and the two are the same colour
+    because the reader refuses a record 352 whose board sequence does not lead with
+    White (trf2json.parse_colorsequence says why).
   * art. 1.7 - the colour preferences are graded far more weakly than the ones of
     C.04.3, and there are two sets of them: type A (the default) knows one strength,
     type B knows two. A team with a colour difference of +1 whose last two played
@@ -144,14 +147,13 @@ class crosstable_fideteam(crosstable):
     THE DECISION: the first paragraph controls, so the team is given a strong preference
     for White.
 
-    The FIDE Technical Commission was asked, and its guidance is to take the clauses of
-    art. 1.7 in the order they are written: a team's colour preference is the first
-    definition that fits it. The first paragraph fits first, so the fifth is never reached,
-    and the team of the example is given its strong preference for White. The same guidance settles the
-    matching ambiguity in the Dutch system, art. 1.7.1 against art. 1.7.3 of C.04.3 - see
-    the head of crosstable_dutch.color_preference.
+    The clauses of art. 1.7 are taken in the order they are written, so a team's colour
+    preference is the first definition that fits it: the first paragraph fits first, the
+    fifth is never reached, and the team of the example keeps its strong preference for
+    White. The same principle settles the matching ambiguity in the Dutch system, art.
+    1.7.1 against art. 1.7.3 of C.04.3 - see the head of crosstable_dutch.color_preference.
 
-    Two things in the article support the same reading. The wording is the first: the
+    Two things in the article carry that reading. The wording is the first: the
     third and the fourth paragraph carry the last
     round as an exception INSIDE their own CD-zero cases ("if its CD is -1, or, if it is
     zero and it is not the last round, ..."). If the fifth paragraph were a blanket
@@ -377,6 +379,14 @@ class crosstable_fideteam(crosstable):
             c["mode"] = "QC"
             c["levels"] = scorelevel
         return weight
+
+    # The weights this builds are exact and therefore large: a bracket of B teams needs a
+    # base of B+1 and a top term of (B+1)**B, so an Olympiad-sized round one carries edge
+    # weights of about 1700 bits each. Python integers take that in their stride and the
+    # ordering is what matters, but the arithmetic is not free - a 200-team round one
+    # spends about 21s in the matching, against 5s with small weights. Round one is also
+    # the round where every criterion is zero and the pairing is decided by identifier
+    # alone, so it is the obvious place to shortcut if that ever matters.
 
     def compute_weight(self, wpairs, bquality):
         quality = {qd.name: None for qd in qdefs if qd.value < QL}

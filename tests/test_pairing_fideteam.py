@@ -386,8 +386,7 @@ def test_art_1_7_2_no_mild_preference_on_zero_in_the_last_round():
 def test_art_1_7_2_fifth_paragraph_final_round_cd_zero_after_two_blacks():
     """The first paragraph of art. 1.7.2 against its fifth - the one position on which the
     two conflict. (The regulation does not number the paragraphs of art. 1.7.2; they are
-    counted here.) This test records the reading the engine takes, which the FIDE
-    Technical Commission has since confirmed.
+    counted here.) This test records the reading the engine takes.
 
     First paragraph: "Strong preference for White if CD < -1, or (CD 0 or -1 and Black in
     the last two played matches)."
@@ -412,12 +411,12 @@ def test_art_1_7_2_fifth_paragraph_final_round_cd_zero_after_two_blacks():
     1.7 permits.
 
     The alternative reading is defensible: the fifth paragraph is worded flatly, and its
-    second limb would then be pure repetition of the third and the fourth. The FIDE
-    Technical Commission was asked and gave the first reading: the clauses of art. 1.7 are
-    taken in the order they are written, and a team's colour preference is the first
-    definition that fits it, so a team that satisfies the first paragraph never reaches
-    the fifth. The comment at the head of crosstable_fideteam.color_preference records
-    that, and if the commission ever settles the point the other way this test is the one
+    second limb would then be pure repetition of the third and the fourth. The engine
+    takes the first reading: the clauses of art. 1.7 are taken in the order they are
+    written, and a team's colour preference is the first definition that fits it, so a
+    team that satisfies the first paragraph never reaches the fifth. The comment at the
+    head of crosstable_fideteam.color_preference argues that from the article, and if the
+    point is ever settled the other way this test is the one
     line to change.
 
     The comparisons below pin the reading exactly: the same team one round earlier, where

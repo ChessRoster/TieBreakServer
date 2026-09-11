@@ -195,7 +195,7 @@ class crosstable_dutch(crosstable):
                 # the other side's preference was only strong. That treated a
                 # strong preference as if it were absolute and had no article
                 # behind it; it could delete the one legal edge a bracket
-                # needed; see tests/test_crosstabledutch_pab_bracket.py.
+                # needed; see tests/test_strong_preference_may_meet_absolute.py.
                 if a["cop"] == col2 and b["cop"] == col2 and (not a["top"]) and (not b["top"]):
                     canmeet = False
         # score diff

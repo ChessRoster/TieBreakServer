@@ -39,12 +39,19 @@ Black by art. 1.7.2 - and the two readings of 1.7 hand Black to different player
 THE DECISION: a player's colour preference is the first definition in art. 1.7 that fits
 them, so the Black-Black-White-White player has an absolute preference and takes Black.
 
-That is the guidance of the FIDE Technical Commission, which reads the conflict as a
-drafting accident: art. 1.7.2 would say what it means if it read "A strong colour
+The article carries the reading itself. It defines the three strengths in a fixed order
+and gives no rule for choosing between them, which leaves the order they are written in as
+the only ranking the text supplies; and art. 1.7.2 reads as though the case art. 1.7.1
+already took is meant to be out of it, since a player with the same colour twice running
+is not a player whose colour is merely leaning one way. Read that way the conflict is a
+drafting accident - art. 1.7.2 would say what it means if it read "A strong colour
 preference occurs when a player does not have an absolute colour preference and their
-colour difference is +1 (preference for Black) or -1 (preference for White)", and it will
-not say so until the Dutch rules are next redrafted. Until then the order the definitions
-are written in is the order they are applied in.
+colour difference is +1 (preference for Black) or -1 (preference for White)".
+
+Informal correspondence with the FIDE Technical Commission agreed with this reading. That
+was private correspondence and not a published decision, so it is the argument from the
+text above that this rests on; if the Dutch rules are redrafted to rank the definitions
+the other way, this is the chain to change.
 
 The chain below is that order, and it is the order the engine has always used - the art.
 1.7.1 tests come before the art. 1.7.2 ones, which come before art. 1.7.3. The same

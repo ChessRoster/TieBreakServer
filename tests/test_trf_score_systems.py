@@ -351,15 +351,18 @@ def test_the_same_team_file_without_362_is_refused():
     """The other half of the test above: drop the record and the file no longer reads.
 
     Without record 362 the reader scores the matches 2 / 1 / 0, gets 2.0, 2.0, 0.0 and 4.0
-    match points, and finds record 310 claiming 3.0, 3.0, 0.0 and 6.0. It says so and
-    stops. This is here so that the file used above is known to depend on record 362 for
-    its result, rather than being a file that would have parsed either way -- which is the
-    difference between a test of record 362 and a test of nothing at all.
-    """
-    with pytest.raises(errors.GacruxInputError) as excinfo:
-        parse(four_teams([], matchpoints=("3.0", "3.0", "0.0", "6.0")))
+    match points, and finds record 310 claiming 3.0, 3.0, 0.0 and 6.0. It says so. This is
+    here so that the file used above is known to depend on record 362 for its result,
+    rather than being a file that would have parsed either way -- which is the difference
+    between a test of record 362 and a test of nothing at all.
 
-    message = str(excinfo.value)
+    The reader reports the disagreement instead of refusing the event, because it cannot
+    tell a missing score system from a standing an arbiter changed on purpose. Either way
+    the totals move, which is what this test is here to detect.
+    """
+    chessfile = parse(four_teams([], matchpoints=("3.0", "3.0", "0.0", "6.0")))
+
+    message = "; ".join(chessfile.chessjson["status"]["info"])
     assert "310" in message                                # the record that disagrees
     assert "team 1 declares 3.0 match points" in message   # what the file said
     assert "the matches give 2.0" in message               # what 2 / 1 / 0 makes of it

@@ -11,6 +11,7 @@ Nothing here runs either script's ``main``.  The corpus is faked, the engine is
 faked, and every write goes to a temporary path; the checked-in baselines are
 only ever read, and one test asserts explicitly that they are not touched.
 """
+import pathlib
 import hashlib
 import importlib.util
 import json
@@ -221,7 +222,11 @@ def test_limit_requires_an_output_path_of_its_own(capsys):
 
     args = regen_values.parse_args(["--limit", "50", "--output", "/tmp/partial.jsonl"])
     assert args.limit == 50
-    assert str(args.output) == "/tmp/partial.jsonl"
+    # Compared as a path, not as a string: str() of a path spells the separator the
+    # way the host does, so "/tmp/partial.jsonl" comes back
+    # "\\tmp\\partial.jsonl" on Windows and the assertion would fail there for
+    # no reason of its own.
+    assert args.output == pathlib.Path("/tmp/partial.jsonl")
 
     # A full run still defaults to the real baseline: that is the ordinary use.
     assert regen_values.parse_args([]).output == regen_values.BASELINE

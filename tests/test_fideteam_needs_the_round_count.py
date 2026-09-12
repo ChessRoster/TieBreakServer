@@ -48,10 +48,10 @@ import sys
 
 import pytest
 
-import errors
-import pairingchecker
-from pairingfideteam import pairing_fideteam
-import trf2json
+from gacrux import errors
+from gacrux import pairingchecker
+from gacrux.pairingfideteam import pairing_fideteam
+from gacrux import trf2json
 
 
 def team_file(code, *, rounds="142 7"):

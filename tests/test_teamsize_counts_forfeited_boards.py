@@ -27,7 +27,7 @@ record 310 against the 001 records then rejects the file it has just miscounted.
 The event below is the smallest one that shows it: two teams, three boards, one round,
 board 2 forfeited on both sides, and no record 352 to state the board count outright.
 """
-import trf2json
+from gacrux import trf2json
 
 
 def player_line(startno, name, rating, points, games):

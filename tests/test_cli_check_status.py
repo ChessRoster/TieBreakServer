@@ -41,7 +41,7 @@ import sys
 
 import pytest
 
-import pairingchecker
+from gacrux import pairingchecker
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "no_colour_preference.trf")
 

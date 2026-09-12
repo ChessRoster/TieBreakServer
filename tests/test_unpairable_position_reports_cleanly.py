@@ -16,9 +16,9 @@ that one under a new name; it independently pins the same commit's fix.
 """
 import pytest
 
-import errors
-import trf2json
-from pairingdutch import pairing_dutch
+from gacrux import errors
+from gacrux import trf2json
+from gacrux.pairingdutch import pairing_dutch
 
 
 def player_line(startno, name, rating, points, games):

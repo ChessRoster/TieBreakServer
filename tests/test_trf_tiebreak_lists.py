@@ -41,8 +41,8 @@ import decimal
 
 import pytest
 
-import tiebreak
-import trf2json
+from gacrux import tiebreak
+from gacrux import trf2json
 
 
 def player_line(startno, name, rating, points, games):

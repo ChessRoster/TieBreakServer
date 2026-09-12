@@ -36,7 +36,7 @@ import sys
 
 import pytest
 
-import pairingchecker
+from gacrux import pairingchecker
 
 # The circle-method round robin of four teams. Rounds 1-3 use up every pair; a declared
 # round 4 can only repeat one of them.
@@ -310,8 +310,8 @@ def test_an_engine_invariant_violation_is_still_a_program_error(tmp_path, monkey
     The invariant is raised by hand: a genuine one cannot be provoked from a file without
     a bug to provoke it with, and the point here is the routing, not the invariant.
     """
-    import errors
-    from pairingfideteam import pairing_fideteam
+    from gacrux import errors
+    from gacrux.pairingfideteam import pairing_fideteam
 
     def broken(self, checkonly, reportlevel=0):
         raise errors.GacruxInvariantError("the engine contradicted itself")

@@ -19,8 +19,8 @@ import sys
 
 import pytest
 
-import pairingchecker
-import trf2json
+from gacrux import pairingchecker
+from gacrux import trf2json
 
 
 LINES = "\n".join([

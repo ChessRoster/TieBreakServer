@@ -34,8 +34,8 @@ alone, hence the file's name.
 """
 import os
 
-import trf2json
-from pairingdutch import pairing_dutch
+from gacrux import trf2json
+from gacrux.pairingdutch import pairing_dutch
 
 FIXTURE = os.path.join(
     os.path.dirname(__file__), "fixtures", "absolute_vs_strong_colour_preference.trf"

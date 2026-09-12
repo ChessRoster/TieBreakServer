@@ -16,11 +16,11 @@ import decimal
 
 import pytest
 
-import pairingfideteam
-from crosstablefideteam import crosstable_fideteam
-from drawresult import drawresult
-from errors import GacruxInputError, GacruxNoLegalPairing
-from pairingfideteam import (
+from gacrux import pairingfideteam
+from gacrux.crosstablefideteam import crosstable_fideteam
+from gacrux.drawresult import drawresult
+from gacrux.errors import GacruxInputError, GacruxNoLegalPairing
+from gacrux.pairingfideteam import (
     NO_COLOUR,
     SECONDARY_UNSTATED,
     SECONDARY_UNUSED,

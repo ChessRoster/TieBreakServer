@@ -15,9 +15,9 @@ from decimal import Decimal
 
 import pytest
 
-import tiebreak
-import tiebreakchecker
-import trf2json
+from gacrux import tiebreak
+from gacrux import tiebreakchecker
+from gacrux import trf2json
 
 PAB = (0, "-", "U")  # pairing-allocated bye
 HPB = (0, "-", "H")  # half-point bye

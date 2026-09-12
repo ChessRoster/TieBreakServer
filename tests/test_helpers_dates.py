@@ -22,7 +22,7 @@ TRF carries, with two figures in 132 and four elsewhere.
 """
 import pytest
 
-import helpers
+from gacrux import helpers
 
 
 @pytest.mark.parametrize(

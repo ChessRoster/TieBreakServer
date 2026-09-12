@@ -28,8 +28,8 @@ wrong rule set rather than as an accepted string.
 """
 import pytest
 
-import tiebreak
-import trf2json
+from gacrux import tiebreak
+from gacrux import trf2json
 
 
 # The rule sets, by the name find_tmversion() selects them under. Spelled out here so the

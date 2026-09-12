@@ -42,8 +42,8 @@ for path in (REPO_ROOT, TESTS_DIR, INTEROP_DIR):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-import pairingchecker  # noqa: E402
-from helpers import parse_int  # noqa: E402
+from gacrux import pairingchecker  # noqa: E402
+from gacrux.helpers import parse_int  # noqa: E402
 
 import trftrunc  # noqa: E402
 from engines.tiebreakserver import TieBreakServerEngine  # noqa: E402

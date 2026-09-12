@@ -45,8 +45,8 @@ import os
 
 import pytest
 
-import errors
-import trf2json
+from gacrux import errors
+from gacrux import trf2json
 
 
 # The score system a file with no 162 record gets, from scoresystem.default_score["game"].

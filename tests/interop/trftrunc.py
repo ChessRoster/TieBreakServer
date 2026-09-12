@@ -36,8 +36,8 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from helpers import parse_int  # noqa: E402
-from trf2json import trf2json  # noqa: E402
+from gacrux.helpers import parse_int  # noqa: E402
+from gacrux.trf2json import trf2json  # noqa: E402
 
 
 class TruncationError(Exception):
@@ -74,7 +74,7 @@ def _score_decimals(trf_text):
         # applies uniformly (the corpus carries no 162 records at all).
         # Resolve the same table trf2json would have produced for that
         # default, without needing a full parse.
-        import scoresystem
+        from gacrux import scoresystem
 
         scores = scoresystem.scoresystem()
         default = scores.fill_default_scoresystem("game")

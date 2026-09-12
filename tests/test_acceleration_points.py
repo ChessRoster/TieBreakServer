@@ -2,11 +2,11 @@
 """Regression tests for the point-valued acceleration representation."""
 from decimal import Decimal
 
-import chessjson
-import trf2json
-import ts2json
-from tiebreak import tiebreak
-from tournamentgenerator import tournamentgenerator
+from gacrux import chessjson
+from gacrux import trf2json
+from gacrux import ts2json
+from gacrux.tiebreak import tiebreak
+from gacrux.tournamentgenerator import tournamentgenerator
 
 
 def test_record_250_round_trips_as_points():

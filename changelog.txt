@@ -12,6 +12,19 @@ Rewritten direct encounter, so all DE od EDE.. TBs are treated in the same funct
 
 Unreleased
 
+- Added typed engine errors and fixed crashes involving unpairable fields,
+  incomplete results, uncommon scoring systems, invalid pairing numbers,
+  long colour sequences, and tie-break cuts. A Dutch round that cannot be
+  completed is reported with status 505 and a message naming how many
+  competitors would remain unpaired (C.04.3 article 1.9.3) instead of being
+  returned as an empty pairing with status 0. A team tournament declared by
+  record 192 with a player section and no record 310 is refused by name, record
+  310 being mandatory for rating and pairing in TRF26, instead of failing with a
+  KeyError and status 502. A team whose first player has a start number of 1000
+  or more is no longer refused as misaligned data. A second record 320, or a
+  second record 240 of the same type and round, is refused naming the earlier
+  line instead of silently replacing it. Ctrl-C while a file is read is no
+  longer reported as an error in the file.
 - Added a pytest regression suite, a 6,000-record TRF corpus, and automated
   testing on Python 3.11 and 3.14 with GitHub Actions. Pull requests receive a
   single, automatically updated comment summarising the complete test matrix.

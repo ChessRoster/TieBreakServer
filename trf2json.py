@@ -13,6 +13,7 @@ import berger
 import chessjson
 import games2matches
 import scoresystem
+from errors import GacruxError, GacruxInputError
 from helpers import *
 
 
@@ -161,6 +162,10 @@ class trf2json(chessjson.chessjson):
         self.forfeitedlist = []
         self.ooolist = []
         self.aatlist = []
+        # TRF-2026 allows record 320 once per tournament, and record 240 once per bye
+        # type per round; the parsers refuse a repeat rather than merge two of them.
+        self.pabrecordline = None
+        self.byerecordlines = {}
         self.o001 = {}
         self.pcompetitors = {}  # pointer to player section competitors
         self.bcompetitors = {}  # pointer to team competitors, index id 1st board player cid
@@ -271,7 +276,15 @@ class trf2json(chessjson.chessjson):
                         # self.parse_line(tournament, record["id"], line)
                         parser(tournament, line)
                         trfline["parse"] = True
-                    except:
+                    except GacruxError:
+                        # A parser that has itself worked out what is wrong with the record
+                        # says so. Do not turn that into a status code and a return: the
+                        # return leaves all_lines unset, and parse_file then reads it.
+                        raise
+                    except Exception:
+                        # Exception, not a bare except: KeyboardInterrupt and SystemExit
+                        # are not errors in the file, and a user who interrupts a long
+                        # read must get the interrupt, not "Error in trf-file, line N".
                         if verbose:
                             raise
                         self.put_status(401, "Error in trf-file, line " + str(lineno) + ", " + line)
@@ -415,8 +428,12 @@ class trf2json(chessjson.chessjson):
         trfid = None
         if trfkey == "001":
                 self.pids = self.all_pids()
+                self.check_player_section(tournament)
                 trfid = self.national["federation"] # This is next record
         elif trfkey == "013":
+                if (tournament["teamTournament"] and len(self.pcompetitors) > 0
+                        and len(self.tcompetitors) == 0 and len(self.bcompetitors) == 0):
+                    self.refuse_missing_team_section(tournament)
                 teamsize = tournament["teamSize"]
                 if tournament["teamTournament"] and (teamsize == 0):
                     countgames = [{} for i in range(tournament["currentRound"])]
@@ -432,6 +449,92 @@ class trf2json(chessjson.chessjson):
                     # print(teamsize)
                     tournament["teamSize"] = teamsize
         return trfid
+
+    def refuse_missing_team_section(self, tournament):
+        """A team tournament with players and no team section cannot be read.
+
+        Record 192 (or a team-only record) says the tournament is a team event, and the
+        player section is there, but no record 310 and no record 013 says which players
+        form which team. TRF-2026 marks record 310 mandatory for rating and for pairing
+        ("R" and "P" in its table), and everything the reader does with a team event --
+        the match list, the board count, the standings -- starts from that record.
+
+        Without this the file reached post_parse_line()'s board count with players that
+        belong to no team, and fell over on KeyError('teamId') from inside the reader:
+        status 502, no line named, nothing the user could act on.
+        """
+        code = tournament["tournamentInfo"].get("typeOfTournament", "")
+        message = (
+            "Record 310 is missing: "
+            + ("record 192 declares " + code + ", a team tournament" if code
+               else "the file declares a team tournament")
+            + ", and TRF-2026 marks record 310 (the team section) mandatory for rating and"
+            + " pairing in team events. Every team has to be declared there, with its team"
+            + " pairing number and the start numbers of its players."
+        )
+        self.put_status(401, message)
+        raise GacruxInputError(message)
+
+    # ==============================
+    #
+    # Pairing numbers read from a record
+    #
+    # The reader keeps the competitors in dicts and lists that are indexed by pairing
+    # number, and it indexed them with the numbers a record named without ever asking
+    # whether the tournament has such a competitor. A number that names nobody -- a
+    # typo, a competitor removed from the player section but left in a later record --
+    # therefore came out as "IndexError: list index out of range" or "KeyError: 6" from
+    # somewhere deep in the reader, naming neither the record, nor the number, nor the
+    # numbers that would have been right.
+    #
+    # Which competitors a number may name depends on the record and on the tournament.
+    # TRF-2026 labels the fields of records 300, 320 and 330 "Team Pairing Number", and
+    # the field of record 240 "Player/Team ID": in a team tournament each of them is the
+    # pairing number of a *team* (240 is written out with "two teams (26 and 47) getting
+    # a HPB in the third round"), and in an individual tournament record 240's is the
+    # pairing number of a player. The player ids that records 300, 310 and 013 list
+    # within a team are always players, in either tournament. So the two checks are
+    # separate. (Record 299 is the one whose field is labelled "(Team) Pairing Number";
+    # abnormal_reading() says how that one is read.)
+
+    def check_competitor(self, tournament, record, competitor):
+        # A team pairing number in a team tournament, a player pairing number otherwise.
+        if tournament["teamTournament"]:
+            # Record 310 fills tcompetitors, the older record 013 fills bcompetitors.
+            competitors = self.tcompetitors if len(self.tcompetitors) > 0 else self.bcompetitors
+            what = "team"
+        else:
+            competitors = self.pcompetitors
+            what = "player"
+        return self.check_pairing_number(record, competitor, competitors, what)
+
+    def check_player(self, record, player):
+        # A player pairing number, in an individual as well as in a team tournament.
+        return self.check_pairing_number(record, player, self.pcompetitors, "player")
+
+    def check_pairing_number(self, record, competitor, competitors, what):
+        if competitor in competitors:
+            return competitor
+        numbers = sorted(competitors.keys())
+        if len(numbers) == 0:
+            # Nothing was read to check the number against, so it cannot be wrong here.
+            return competitor
+        message = (
+            "Record " + record + " names " + what + " " + str(competitor)
+            + ", the tournament has " + str(len(numbers)) + " " + what + "s ("
+            + str(numbers[0]) + " - " + str(numbers[-1]) + ")"
+        )
+        self.put_status(401, message)
+        raise GacruxInputError(message)
+
+    def check_player_section(self, tournament):
+        # Every opponent a 001 record names has to be a player the player section has.
+        # The number cannot be checked while the record is read -- the opponent may be
+        # further down the file -- so it is checked once the section is complete.
+        for game in tournament["gameList"]:
+            for color in ["white", "black"]:
+                if game[color] > 0:
+                    self.check_player("001", game[color])
 
     def is_rr(self, tournament):
         if "rr" not in self.__dict__:
@@ -717,7 +820,9 @@ class trf2json(chessjson.chessjson):
         matchPoints = parse_float(line[54:60]) if ext else Decimal("0.0")
         gamePoints = parse_float(line[61:67]) if ext else Decimal("0.0")
         rank = parse_int(line[68:71]) if ext else 0
-        if ext and line[71:74].strip() != "":
+        # Columns 72-73 are the gap between the rank (69-71) and the first player id
+        # (74-77). Column 74 is the first digit of a four-figure id, so it is data.
+        if ext and line[71:73].strip() != "":
             self.put_status(467, "Team " + str(cid) + " has misaligned data, may be bad character encoding") 
         team = {"id": 0, "teamName": teamname, "players": []}
         teamid = self.append_team(team, 0)
@@ -740,6 +845,7 @@ class trf2json(chessjson.chessjson):
             pid = parse_int(line[i - 4 : i])
             if pid == 0:
                 continue
+            self.check_player(line[0:3], pid)
             self.pcompetitors[pid]["order"] = board 
             competitor["cplayers"].append(self.pcompetitors[pid])
             self.pcompetitors[pid]["teamId"] = teamid
@@ -958,6 +1064,7 @@ class trf2json(chessjson.chessjson):
         for elem in line[4:].replace(",", " ").replace("/", " ").split(" "):
             num = parse_int(elem)
             if num > 0:
+                self.check_player(line[0:3], num)
                 self.pcompetitors[num]["present"] = False
         return
 
@@ -1018,9 +1125,16 @@ class trf2json(chessjson.chessjson):
         rnd = parse_int(line[4:7])
         oooteam = parse_int(line[8:11])
         otherteam = parse_int(line[12:15])
+        for team in [oooteam, otherteam]:
+            if team > 0:
+                self.check_competitor(tournament, line[0:3], team)
         for i in range(20, len(line) + 1, 5):
             if len(line[i - 4:]):
                 order.append(parse_int(line[i - 4 : i]))
+        for player in order:
+            # 0000 is a board nobody played on.
+            if player > 0:
+                self.check_player(line[0:3], player)
         ooo = {"round": rnd, "oooteam": oooteam, "otherteam": otherteam, "order": order}
         self.ooolist.append(ooo)
         # print(ooo)
@@ -1084,6 +1198,17 @@ class trf2json(chessjson.chessjson):
         return
 
     def parse_trf_pab(self, tournament, line):
+        if self.pabrecordline is not None:
+            # TRF-2026: "Pairing-Allocated-Bye (PAB) (one record per tournament)". A
+            # second one would silently replace the first's points in the score system
+            # and add its byes on top of the first's, and neither is what the file says.
+            message = (
+                "Record 320 may occur only once, one record per tournament (TRF-2026):"
+                + ' a second one was found after "' + self.pabrecordline.rstrip() + '"'
+            )
+            self.put_status(401, message)
+            raise GacruxInputError(message)
+        self.pabrecordline = line
         matchPoints = parse_float(line[4:8])
         gamePoints = parse_float(line[9:13])
         self.scores.add_unplayed("P", matchPoints, gamePoints)
@@ -1091,6 +1216,7 @@ class trf2json(chessjson.chessjson):
         for i in range(17, len(line) + 1, 4):
             competitor = parse_int(line[i - 3 : i])
             if competitor > 0:
+                self.check_competitor(tournament, line[0:3], competitor)
                 self.byelist.append(
                     {
                         "type": "P",
@@ -1108,9 +1234,23 @@ class trf2json(chessjson.chessjson):
         bye = line[4].upper()
         score = trans[bye]
         rnd = parse_int(line[6:9])
+        if line[0:3] == "240":
+            # TRF-2026: "Half (HPB) or Full (FPB) Point-Bye (at most one record per
+            # type per round)". Everybody getting that bye in that round is listed on
+            # the one record, so a second one is a repeat or a contradiction.
+            if (bye, rnd) in self.byerecordlines:
+                message = (
+                    "Record 240 may occur at most once per type per round (TRF-2026):"
+                    + " a second record of type " + bye + " for round " + str(rnd)
+                    + ' was found after "' + self.byerecordlines[(bye, rnd)].rstrip() + '"'
+                )
+                self.put_status(401, message)
+                raise GacruxInputError(message)
+            self.byerecordlines[(bye, rnd)] = line
         for i in range(10 + idsize, len(line) + 1, idsize + 1):
             competitor = parse_int(line[i - idsize : i])
             if competitor > 0:
+                self.check_competitor(tournament, line[0:3], competitor)
                 self.byelist.append(
                     {
                         "type": bye,
@@ -1132,6 +1272,9 @@ class trf2json(chessjson.chessjson):
         rnd = parse_int(line[7:10])
         whiteteam = parse_int(line[11:14])
         blackteam = parse_int(line[15:18])
+        for team in [whiteteam, blackteam]:
+            if team > 0:
+                self.check_competitor(tournament, line[0:3], team)
         forfeitedtrans = { "10": "WZ", "WL": "WZ", "WZ": "WZ", "+-": "WZ",  
                            "00": "ZZ", "LL": "ZZ", "ZZ": "ZZ", "--": "ZZ", 
                            "01": "ZW", "LW": "ZW", "ZW": "ZW", "-+": "ZW", 
@@ -1591,7 +1734,7 @@ class trf2json(chessjson.chessjson):
             try:
                 all_lines += func(tournament, record["id"])
                 # all_lines += self.output_line(tournament, record["id"])
-            except:
+            except Exception:
                 if verbose:
                     raise
                 self.put_status(401, "Error writing trf-file, line " + trfid)

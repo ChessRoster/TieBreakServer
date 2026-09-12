@@ -8,6 +8,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 import chessjson as chessjson
 import rating as rating
+from errors import GacruxInputError
 
 """
 Structure
@@ -397,8 +398,7 @@ class tiebreak:
         if black > 0:
             if "bResult" not in rst:
                 err = "No result for black in round " +  str(rst.get("round", 0)) + ", white=" +  str(rst.get("white", 0)) + ", black=" +  str(rst.get("black", 0))
-                self.chessevent.put_status(451, err)
-                raise
+                raise GacruxInputError(err)
             bPoints = self.get_score(scoresystem, rst, "black")
             brPoints = self.get_score(self.rating, rst, "black")
             bVur = self.is_vur(rst, "black")
@@ -642,7 +642,19 @@ class tiebreak:
                             self.addtbval(tbscore[prefix + "cod"], rnd, pf)
                             self.addtbval(tbscore[prefix + "cod"], "val", pf)
                             pf = tbscore[prefix + "cod"]["val"]
-                            ncol = (other[ocol] + "bbbbwwww")[pf]
+                            colpref = other[ocol] + "bbbbwwww"
+                            # colpref is a map for a colour difference in [-4, +4] and for no
+                            # other index. Entry 0 is "alternate" (the opposite of the colour
+                            # just played); entries +1..+4 are the four "b" characters, for a
+                            # competitor due Black; entries -1..-4 are the four "w" characters
+                            # counted from the end (positions 8..5), for one due White. A
+                            # competitor with the same colour in every game runs |pf| past 4 and
+                            # off its own half of the table into the other one - pf = +5 indexes
+                            # position 5, the first "w", telling a competitor who has had nothing
+                            # but White to prefer White. Saturating on the length of the string
+                            # ([-9, +8]) lands in the opposite half too, so the clamp is to the
+                            # range the table actually covers.
+                            ncol = colpref[max(-4, min(pf, 4))]
                             ncol += str(abs(pf)) if ocol != pcol else "2"
     
                             csq += ocol
@@ -1126,6 +1138,8 @@ class tiebreak:
                 high = rounds - low
             vun = tb["modifiers"].get("vun", False)
             while low > 0:
+                if len(bhvalue) == 0:  # the cut is larger than the number of games of this competitor
+                    break
                 sortall = sorted(bhvalue, key=lambda game: (game["score"], game["tbvalue"]))
                 sortexp = sorted(bhvalue, key=lambda game: (-game["vur"], game["score"], game["tbvalue"]))
                 if vun or sortall[0]["tbvalue"] > sortexp[0]["tbvalue"]:
@@ -1137,6 +1151,8 @@ class tiebreak:
                 low -= 1
 
             while high > 0:
+                if len(bhvalue) == 0:  # the cut is larger than the number of games of this competitor
+                    break
                 sortall = sorted(bhvalue, key=lambda game: (-game["score"], -game["tbvalue"]))
                 # sortexp = sorted(bhvalue, key=lambda game: (-game['vur'], -game['score'], -game['tbvalue'])) // No
                 # exception on high

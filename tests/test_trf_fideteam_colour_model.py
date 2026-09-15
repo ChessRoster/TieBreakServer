@@ -27,9 +27,9 @@ import sys
 
 import pytest
 
-import pairingchecker
-import trf2json
-from pairingfideteam import pairing_fideteam
+from gacrux import pairingchecker
+from gacrux import trf2json
+from gacrux.pairingfideteam import pairing_fideteam
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "fideteam_nocolor.trf")
 

@@ -11,10 +11,10 @@ opponents - Two-dimentional array of size [0..P+1][0..P+1] of opponent objects
 """
 
 from decimal import Decimal
-import colourpreference
-from crosstable import crosstable, flt
-from errors import GacruxInvariantError
-from tiebreak import tiebreak
+from gacrux import colourpreference
+from gacrux.crosstable import crosstable, flt
+from gacrux.errors import GacruxInvariantError
+from gacrux.tiebreak import tiebreak
 from itertools import combinations  
 from enum import Enum
 

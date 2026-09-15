@@ -24,7 +24,7 @@ These tests hold the reader to reporting the record instead of dying on it.
 """
 import pytest
 
-import trf2json
+from gacrux import trf2json
 
 
 def player_line(startno, name, rating, points, games):

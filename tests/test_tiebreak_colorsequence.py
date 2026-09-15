@@ -11,8 +11,8 @@ hold the listing to that.
 """
 import pytest
 
-import tiebreak
-import trf2json
+from gacrux import tiebreak
+from gacrux import trf2json
 
 
 def player_line(startno, name, rating, points, games):
@@ -198,7 +198,7 @@ def test_the_listed_colour_preference_is_the_engines(csq):
     games at a colour difference of +1 and -1 (art. 1.7.1), one at a difference of zero,
     a strong preference (art. 1.7.2), and a history whose old listing was "b3".
     """
-    from crosstabledutch import crosstable_dutch
+    from gacrux.crosstabledutch import crosstable_dutch
 
     cod = csq.count("w") - csq.count("b")
     scores = compute(all_draws_with_player_1_on(csq), ["COD", "COP", "CSQ"])

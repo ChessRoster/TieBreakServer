@@ -20,9 +20,9 @@ pins that choice so it cannot drift silently, and does not claim it is the only 
 """
 import pytest
 
-import trf2json
-from crosstabledutch import crosstable_dutch
-from pairingdutch import pairing_dutch
+from gacrux import trf2json
+from gacrux.crosstabledutch import crosstable_dutch
+from gacrux.pairingdutch import pairing_dutch
 
 PAB = (0, "-", "U")  # pairing-allocated bye
 HPB = (0, "-", "H")  # half-point bye

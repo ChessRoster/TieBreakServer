@@ -16,11 +16,11 @@ from collections import defaultdict
 import networkx as nx
 
 # from networkx.algorithms import bipartite
-from crosstable import crosstable
-from crosstabledutch import crosstable_dutch, qdefs, flt
-from errors import GacruxInvariantError, GacruxNoLegalPairing
-from pairing import pairing
-import helpers
+from gacrux.crosstable import crosstable
+from gacrux.crosstabledutch import crosstable_dutch, qdefs, flt
+from gacrux.errors import GacruxInvariantError, GacruxNoLegalPairing
+from gacrux.pairing import pairing
+from gacrux import helpers
 
 
 """

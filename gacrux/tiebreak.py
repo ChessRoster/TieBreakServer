@@ -6,10 +6,10 @@ Created on Fri Aug  11 11:43:23 2023
 import math
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
-import chessjson as chessjson
-import colourpreference
-import rating as rating
-from errors import GacruxInputError
+from gacrux import chessjson as chessjson
+from gacrux import colourpreference
+from gacrux import rating as rating
+from gacrux.errors import GacruxInputError
 
 
 def _select_low_cut_game(games, ignore_vur_exception=False):

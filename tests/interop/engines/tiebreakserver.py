@@ -34,8 +34,8 @@ for path in (REPO_ROOT, INTEROP_DIR):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-import pairingchecker  # noqa: E402
-import version  # noqa: E402
+from gacrux import pairingchecker  # noqa: E402
+from gacrux import version  # noqa: E402
 
 from engines.base import Outcome  # noqa: E402
 from normalize import normalize_pairing  # noqa: E402

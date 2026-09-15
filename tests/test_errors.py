@@ -8,9 +8,9 @@ state (C.04.3 art. 1.9.3) rather than read it as a crash.
 """
 import pytest
 
-import errors
-import trf2json
-from pairingdutch import pairing_dutch
+from gacrux import errors
+from gacrux import trf2json
+from gacrux.pairingdutch import pairing_dutch
 
 
 def player_line(startno, name, rating, points, games):

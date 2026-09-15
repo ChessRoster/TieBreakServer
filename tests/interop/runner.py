@@ -40,7 +40,7 @@ for path in (REPO_ROOT, TESTS_DIR, INTEROP_DIR):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-import version as version_module  # noqa: E402
+from gacrux import version as version_module  # noqa: E402
 
 import trftrunc  # noqa: E402
 from engines.tiebreakserver import TieBreakServerEngine, VARIANTS as TBS_VARIANTS  # noqa: E402

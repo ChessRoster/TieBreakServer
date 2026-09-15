@@ -5,7 +5,7 @@ The result-reversal table, chessjson.reverse, is held by
 tests/test_score_single_sided_result.py::test_reverse_is_defined_for_every_result_letter,
 beside the single-sided results it exists to complete.
 """
-import chessjson
+from gacrux import chessjson
 
 
 def test_unsupported_python_version_is_reported_in_status(monkeypatch):

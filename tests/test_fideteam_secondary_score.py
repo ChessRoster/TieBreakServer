@@ -19,8 +19,8 @@ import io
 import os
 import sys
 
-import pairingchecker
-from pairingfideteam import SECONDARY_UNUSED, SECONDARY_USED, pairing_fideteam
+from gacrux import pairingchecker
+from gacrux.pairingfideteam import SECONDARY_UNUSED, SECONDARY_USED, pairing_fideteam
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "fideteam_nocolor.trf")
 

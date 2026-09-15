@@ -13,9 +13,9 @@ it, and the pairing engine reports the missing declaration instead of guessing.
 """
 import pytest
 
-import errors
-from pairingfideteam import pairing_fideteam
-import trf2json
+from gacrux import errors
+from gacrux.pairingfideteam import pairing_fideteam
+from gacrux import trf2json
 
 
 def team_file(*extra):

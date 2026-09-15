@@ -5,8 +5,8 @@ Created on Tue Oct 31 13:57:55 2023
 """
 
 from decimal import Decimal
-from errors import GacruxInputError
-import helpers
+from gacrux.errors import GacruxInputError
+from gacrux import helpers
 
 # ==============================
 #

@@ -66,8 +66,8 @@ def tiebreaks_for(category):
 
 
 def _run(tournament_lines, names):
-    import tiebreak
-    import trf2json
+    from gacrux import tiebreak
+    from gacrux import trf2json
     chessfile = trf2json.trf2json()
     chessfile.parse_file("\n".join(tournament_lines), True)
     tournament = chessfile.get_tournament(1)

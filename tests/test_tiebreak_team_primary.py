@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-import tiebreak
+from gacrux import tiebreak
 
 
 def team_tournament(primary):

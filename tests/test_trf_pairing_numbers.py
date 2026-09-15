@@ -18,8 +18,8 @@ tournament.
 """
 import pytest
 
-import errors
-import trf2json
+from gacrux import errors
+from gacrux import trf2json
 
 
 def player_line(startno, name, rating, points, games):

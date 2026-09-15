@@ -23,7 +23,7 @@ letter under both ``wResult`` and ``score``; record 320 does the same for its
 """
 import pytest
 
-import trf2json
+from gacrux import trf2json
 
 # The column layouts the two parsers read, spelled out so the tests are not a
 # row of magic strings. Record 240 (parse_trf_bye, idsize 4): the bye letter in

@@ -13,9 +13,8 @@ scoregroup and tie-breaks. It is not decoration.
 
 Record 320 is team-only; an individual tournament must reject it clearly.
 
-No fixture in the TRF corpus carries it: corpus fixtures are written out of the
-engine's own JSON, and record 320 has no writer. These unit tests therefore hold
-the path directly.
+No fixture in the TRF corpus carries it, so these unit tests hold the path
+directly.
 
 Records 240 and 320 both feed ``self.byelist`` and its match-building consumers,
 so their entries must have the same core shape. Record 240 carries the result

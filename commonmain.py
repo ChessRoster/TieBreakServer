@@ -392,6 +392,10 @@ class commonmain:
             if recorded["code"] > 0:
                 self.error(recorded["code"], recorded["error"])
             else:
+                # 401 wherever the malformation is found, and not the stage's own errcode:
+                # GacruxInputError means the file is wrong, and a caller testing for that
+                # should not have to know which stage noticed. See the reasoning in
+                # tests/test_cli_fault_reporting.py.
                 self.report_fault(401, str(fault))
         except Exception:
             # Exception, and not a bare except: KeyboardInterrupt and SystemExit are not

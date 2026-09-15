@@ -146,8 +146,12 @@ class games2matches():
             for key, tmatch in matches.items():
                 teamsize = max(teamsize, len(tmatch["games"]))
             tournament["teamSize"] = teamsize
-        seq = tournament["teamSequence"] if "teamSequence" in tournament else "".join(["WB"] * ((teamsize + 1) // 2))[0:teamsize]
-        # bseq =''.join([tother[elem] for elem in list(seq)])
+        # There used to be a board-colour sequence worked out here and thrown away:
+        # neither it nor the wcol taken off its first character was read again, and the
+        # methods further down build their own. All it did was raise IndexError when
+        # teamsize was 0 - a team event with no result recorded anywhere, which is the
+        # ordinary input to pairing round 1 - because the default sequence slices down
+        # to "" and "".[0] is an error. That reached the caller as 510, "Program error".
         tournament["teamSize"] = teamsize
  
 

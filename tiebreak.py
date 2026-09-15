@@ -114,6 +114,10 @@ class tiebreak:
         2 : "2026-03-01",   # Approved by FIDE Council on 02/02/2026
         } 
 
+    # The format TIEBREAK_RULES states its dates in, and the one a tournament's start date
+    # is read in, so that find_tmversion() compares two dates rather than two strings.
+    ISO_DATE = "%Y-%m-%d"
+
     # constructor function
     def __init__(self, tournament, currentround, params):
         self.tiebreaklist = {
@@ -179,7 +183,10 @@ class tiebreak:
             "RND":   {"name": "RND",   "func": self.compute_random,                      "rev": False, "flag": ""   ,"desc": "Unique random number"},
             }
 
-        chessevent = chessjson.chessjson()    
+        # chessjson owns the shared implementations of get_score() and is_vur(), and the
+        # "reverse" result table they need. Keep the instance rather than discarding it, so
+        # this class can call them instead of carrying its own copies (see get_score below).
+        chessevent = self.chessevent = chessjson.chessjson()
         self.tournament = tournament
         self.tiebreaks = []
         if tournament is None:
@@ -240,13 +247,56 @@ class tiebreak:
         self.unrated = int(params["unrated"]) if params is not None and "unrated" in params and params["unrated"] is not None else None
         self. rulesversion = max(self.TIEBREAK_RULES.keys())
 
+    def get_startdate(self, tm):
+        """The tournament's start date as a date, or None when the file gives no usable one.
+
+        The date is READ, not measured. The leading ten characters are parsed as an ISO
+        "YYYY-MM-DD" and whatever follows them is discarded -- the field padding of a
+        fixed-width TRF, a time of day, the remainder of a timestamp -- because none of it
+        changes the day the tournament started. Returning a date, rather than the string it
+        was written as, is what stops a longer spelling of the same day from choosing a
+        different rule set than the short one.
+
+        None is returned for an absent record, for a JSON null (``len()`` raised TypeError
+        on it) and for anything that is not an ISO date, because a date the engine cannot
+        read is one it must not guess at.
+        """
+        startdate = tm.get("tournamentInfo", {}).get("startDate", None)
+        if not isinstance(startdate, str):
+            return None
+        try:
+            return datetime.strptime(startdate[0:10], self.ISO_DATE).date()
+        except ValueError:
+            return None
+
     def find_tmversion(self, tm):
-        startdate = tm.get("tournamentInfo", {}).get("startDate", "")
-        if len(startdate) != 10:
-            startdate = str(datetime.now())[0:10]
-        if startdate < self.TIEBREAK_RULES[2]:
-            self.rulesversion = 1
-        
+        """Select the tie-break rule set that applies to this tournament, by its start date.
+
+        A rule set applies from the date it came into force, so a tournament that started
+        before the 2026 rules did is scored under the previous set. Both sides of the
+        comparison are dates, so no spelling of a date can decide it.
+        """
+        startdate = self.get_startdate(tm)
+        if startdate is None:
+            # No usable start date: the tournament cannot be placed on either side of the
+            # cut-off, so it takes the newest rule set -- the rules in force -- as an
+            # explicit, documented, deterministic fallback.
+            #
+            # It deliberately does not fall back on today's date, which is what used to
+            # happen. That was datetime.now(), the naive local clock, so an undated file
+            # scored its tie-breaks one way before local midnight and another way after it,
+            # and two machines in different time zones disagreed about the same file --
+            # scoring a tournament under a different regulation without saying so.
+            #
+            # Raising was considered and rejected: undated files are ordinary and score
+            # correctly today, so refusing them would reject working input in order to fix
+            # a defect they do not have. The fallback is stated here instead of left to be
+            # inferred from where the assignment does not happen.
+            self.rulesversion = max(self.TIEBREAK_RULES.keys())
+            return
+        cutoff = datetime.strptime(self.TIEBREAK_RULES[2], self.ISO_DATE).date()
+        self.rulesversion = 1 if startdate < cutoff else max(self.TIEBREAK_RULES.keys())
+
     def zero(self, scorename):
         return self.matchscore["Z"] if scorename == "match" else self.gamescore["Z"]
 
@@ -264,35 +314,40 @@ class tiebreak:
         else:
             self.primaryscore = "points"
 
+    # get_score() and is_vur() belong to chessjson. This class used to carry its own copies
+    # of both, and the copies drifted from the originals twice over: they dereferenced a
+    # "self.reverse" table that only chessjson defines (so they raised AttributeError rather
+    # than answering), and they never received chessjson's repair for a game record written
+    # from only one side. Nothing in either function is specific to tie-breaking, so they are
+    # delegated here and there is one implementation left to keep correct.
+
     def get_score(self, slist, result, color):
-        if color[0] + "Result" in result:
-            res = result[color[0] + "Result"]
-        elif result["black"] > 0:
-            res = self.reverse[result[color[0] + "Result"]]
-        else:
-            # print("get_score" ,  slist, result, color, "Null")
-            return Decimal("0.0")
-        while res in slist:
-            if res == "L" and result["played"] is False:
-                res = "Z"
-            res = slist[res]
-        # print("get_score" ,  slist, result, color, res)
-        return res
+        return self.chessevent.get_score(slist, result, color)
 
-    def is_vur(self, result, color):  #
-        if result["played"]:
-            return False
+    def is_vur(self, result, color):
+        return self.chessevent.is_vur(result, color)
 
-        if color[0] + "Result" in result:
-            res = result[color[0] + "Result"]
-        elif result["black"] > 0:
-            res = self.reverse[result[color[0] + "Result"]]
-        else:
-            return Decimal("0.0")
-        # if res == 'W' and result['black'] > 0:  // Full point bye is not vur
-        if res == "W":
-            return False
-        return True
+    def get_result(self, result, color):
+        """Return the result LETTER recorded for *color* in a game record.
+
+        get_score() resolves a game record to points; a competitor's "res" field needs the
+        letter instead, because the tie-breaks index the score system by it. Both have to
+        answer the same question about a one-sided record -- trf2json writes a game from one
+        player's "001" row at a time, so a withdrawn player leaves a record carrying only
+        their opponent's half -- and the answer is the same: this side's letter is the
+        reverse of the other side's. The reverse table stays chessjson's, so there is still
+        only one of it.
+
+        With neither half recorded there is no result to report, and "Z" (zero) is returned
+        to agree with get_score(), which reports Decimal("0.0") for that same record.
+        """
+        key = color[0] + "Result"
+        if key in result:
+            return result[key]
+        other = ("b" if color[0] == "w" else "w") + "Result"
+        if result.get("black", 0) > 0 and other in result:
+            return self.chessevent.reverse[result[other]]
+        return "Z"
 
     """
     compute_tiebreaks(self, chessfile, tournamentno, params)
@@ -454,7 +509,7 @@ class tiebreak:
             cmps[white]["rsts"][rnd] = {
                 ptype: wPoints,
                 "rpoints": wrPoints,
-                "res": rst["wResult"],
+                "res": self.get_result(rst, "white"),
                 "color": "w",
                 "played": rst["played"],
                 "vur": wVur,
@@ -470,7 +525,7 @@ class tiebreak:
             cmps[black]["rsts"][rnd] = {
                 ptype: bPoints,
                 "rpoints": brPoints,
-                "res": rst["bResult"],
+                "res": self.get_result(rst, "black"),
                 "color": "b",
                 "played": rst["played"],
                 "vur": bVur,
@@ -1090,13 +1145,6 @@ class tiebreak:
             tbscore[prefix + "ks"]["val"] = ks
         return "ks"
 
-    def compute_buchholz_sonneborn_berger(self, tb, cmps, rounds):
-        version = self.rulesversion
-        if tb["modifiers"]["ver"]:
-            version = max(self.TIEBREAK_RULES.keys())
-        tbname = self.compute_buchholz_sonneborn_berger_ver(tb, cmps, rounds, version)
-        return tbname
-        
     def compute_ext_sonneborn_berger(self, tb, cmps, rounds):
         if len(tb["name"]) == 5:
             tb["pointtype"] = tb["name"][1:3].lower() + "points"
@@ -1104,7 +1152,9 @@ class tiebreak:
         return tbname
 
 
-    def compute_buchholz_sonneborn_berger_ver(self, tb, cmps, rounds, version):
+    def compute_buchholz_sonneborn_berger(self, tb, cmps, rounds):
+        # The rules era in force is tb["modifiers"]["ver"], which parse_tiebreak sets from
+        # the tournament's start date and the /X modifier.
         name = tb["name"].lower()
         isfb = name == "fb" or name == "afb" or tb["modifiers"].get("foremode", False)
         # For adjustment and fore two variables are important:
@@ -1145,9 +1195,7 @@ class tiebreak:
                 tbscore[oprefix + "abh"]["val"] += adjust
                 fbscore += adjust
             tbscore[oprefix + "ownscore"] = fbscore
-            #if version == 2:
-            #    tbscore[oprefix + "abh"] = max(tbscore[oprefix + "abh"], opointsfordraw * rounds)
-                
+
         if name == "abh" or name == "afb":
             return "abh"
 
@@ -1202,16 +1250,12 @@ class tiebreak:
             while high > 0:
                 if len(bhvalue) == 0:  # the cut is larger than the number of games of this competitor
                     break
+                # C.07 art. 16.5.1's exception is for the least significant value only:
+                # a high cut takes the most significant element whether or not it comes
+                # from a VUR, so there is one ordering here, with or without vun.
                 sortall = sorted(bhvalue, key=lambda game: (-game["score"], -game["tbvalue"]))
-                # sortexp = sorted(bhvalue, key=lambda game: (-game['vur'], -game['score'], -game['tbvalue'])) // No
-                # exception on high
-                sortexp = sorted(bhvalue, key=lambda game: (-game["score"], -game["tbvalue"]))
-                if vun:
-                    bhvalue = sortall[1:]
-                    tbscore[oprefix + name]["cut"].append(sortall[0]["rnd"])
-                else:
-                    bhvalue = sortexp[1:]
-                    tbscore[oprefix + name]["cut"].append(sortexp[0]["rnd"])
+                bhvalue = sortall[1:]
+                tbscore[oprefix + name]["cut"].append(sortall[0]["rnd"])
                 high -= 1
 
             #            if high > 0:
@@ -1379,7 +1423,15 @@ class tiebreak:
                 and startno >= val["firstCompetitor"]
                 and startno <= val["lastCompetitor"]
             ):
-                acc = val["gamePoints"] if prefix == "points_" else val["matchPoints"]
+                # Individual scores and a team's game-point score use game points;
+                # only a team's match-point score uses match points. ACC/X reaches
+                # this method with the secondary ``gpoints_`` prefix when match points
+                # are primary.
+                acc = (
+                    val["gamePoints"]
+                    if prefix in ("points_", "gpoints_")
+                    else val["matchPoints"]
+                )
         return acc
 
     # STD: 1.0/ 0.5 /0.0 point system

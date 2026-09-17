@@ -8,12 +8,9 @@ by a positive or negative number (whatever the reason)", and for an individual
 tournament that number is the points field in columns 14-17. A record with a
 type names an unplayed-game outcome and writes it onto the game itself.
 
-Both reached the tie-break as a fault rather than as a number, which is what
-these pin: the engine may decide such a file is wrong and say so, but it may
-not raise out of the middle of the computation.
+The explicit points belong to the named competitor, not to the result letter's
+ordinary value. These tests pin both forms through the standings calculation.
 """
-import decimal
-
 from gacrux import tiebreak
 from gacrux import trf2json
 
@@ -89,8 +86,8 @@ def test_a_penalty_reaches_the_standings_of_an_individual_tournament():
     assert compute(penalised, ["PTS"]) == {1: "0.5", 2: "0.0"}
 
 
-def test_an_unplayed_result_the_rating_table_does_not_define_is_scored():
-    """A result letter the rating table has no entry for is still a number.
+def test_an_unplayed_result_uses_the_points_record_299_assigns():
+    """A typed assignment uses its explicit points, not the result-letter value.
 
     get_score walks its table until the letter resolves to a value. A letter
     the table does not carry at all skips the loop and is returned unchanged,
@@ -102,14 +99,15 @@ def test_an_unplayed_result_the_rating_table_does_not_define_is_scored():
     A and U, onto Z. It did not define the other three unplayed results, F, H
     and P, each of which record 299 can write onto a game.
 
-    What such a record should do to the score itself is a separate question and
-    this does not pin one; it pins only that the tournament is scored rather
-    than raising from the middle of the computation.
+    Record 299 assigns 0.5 points to player 1 here. The parser stores that value
+    on player 1's side of the game. The standings calculation must read it from
+    that same side; scoring H from the ordinary score table happens to produce
+    the same value and would not prove that, so the second assertion uses 0.75.
     """
     lines = one_played_round([abnormal_line("H", "", " 0.5", 1, [1])])
 
-    scores = compute(lines, ["PTS"])
+    assert compute(lines, ["PTS"]) == {1: "0.5", 2: "0.0"}
 
-    assert set(scores) == {1, 2}
-    for value in scores.values():
-        decimal.Decimal(value)          # a score, not a result letter
+    nonstandard = one_played_round([abnormal_line("H", "", "0.75", 1, [2])])
+
+    assert compute(nonstandard, ["PTS"]) == {1: "1.0", 2: "0.75"}

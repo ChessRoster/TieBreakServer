@@ -456,8 +456,8 @@ class tiebreak:
         white = self.chj.get_result_cid(rst, "white")
         wPoints = self.get_score(scoresystem, rst, "white")
         wrPoints = self.get_score(self.rating, rst, "white")
-        if ptype in rst:
-            wPoints = rst[ptype]
+        if rst["white"] is not None and ptype in rst["white"]:
+            wPoints = rst["white"][ptype]
         wVur = self.is_vur(rst, "white")
         wrating = None
         brating = None
@@ -469,8 +469,8 @@ class tiebreak:
                 raise GacruxInputError(err)
             bPoints = self.get_score(scoresystem, rst, "black")
             brPoints = self.get_score(self.rating, rst, "black")
-            if ptype in rst:
-                bPoints = rst[ptype]
+            if rst["black"] is not None and ptype in rst["black"]:
+                bPoints = rst["black"][ptype]
             bVur = self.is_vur(rst, "black")
             if rst["played"]:
                 if cmps.get(white, {}).get("rating", None) is not None:

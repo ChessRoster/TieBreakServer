@@ -21,7 +21,17 @@ from gacrux import chessjson
 from gacrux.crosstablefideteam import crosstable_fideteam
 from gacrux.drawresult import drawresult
 from gacrux.gacruxexeptions import GacruxNoLegalPairing
-from gacrux.pairingfideteam import pairing_fideteam
+from gacrux.pairingfideteam import (
+    NO_COLOUR,
+    SECONDARY_UNSTATED,
+    SECONDARY_UNUSED,
+    SECONDARY_USED,
+    TYPE_A,
+    TYPE_B,
+    pairing_fideteam,
+    resolve_colour_model,
+    resolve_secondary_score,
+)
 
 WIN = decimal.Decimal("1.0")
 DRAW = decimal.Decimal("0.5")
@@ -50,7 +60,8 @@ REVERSE = {"W": "L", "D": "D", "L": "W"}
 class event:
     """A team tournament, built round by round."""
 
-    def __init__(self, numteams, numrounds, teamsize=2, typeb=False, primary=None, secondary=None, nocolor=False):
+    def __init__(self, numteams, numrounds, teamsize=2, typeb=False, primary=None, secondary=None, nocolor=False,
+                 topcolor="w"):
         pairingsystem = ["fideteam"] + (["typeb"] if typeb else []) + (["nocolor"] if nocolor else [])
         scoresystem = {"game": dict(GAMESCORE), "match": dict(MATCHSCORE)}
         if primary is not None:
@@ -67,7 +78,6 @@ class event:
             "currentRound": 0,
             "teamTournament": True,
             "teamSize": teamsize,
-            "topColor": "w",
             "pairingSystem": pairingsystem,
             "rankOrder": ["PTS"],
             "scoreSystem": scoresystem,
@@ -75,6 +85,11 @@ class event:
             "gameList": [],
             "matchList": [],
         }
+        if topcolor is not None:
+            # A record 152 states the drawing of lots of art. 4.1. topcolor=None is a file
+            # that does not, which the engine has to read back out of the round played.
+            self.tournament["topColor"] = topcolor
+            self.tournament["topColorExplicit"] = True
         for team in range(1, numteams + 1):
             self.tournament["competitors"].append(
                 {
@@ -93,6 +108,27 @@ class event:
 
     def player(self, team, board):
         return 100 * team + board
+
+    def initial_order(self, ranks):
+        """The initial order of the field (Article 2 of the General Handling Rules for
+        Swiss Tournaments), given as the rank of team 1, team 2 and so on.
+
+        By default the harness makes the rank of a team its own number, so the two orders
+        agree and nothing tells them apart. The -r option of the command line pairs on the
+        rank order rather than on the competitor ids of the file, and the TPN of art.
+        1.1.1 is then the place of a team in THIS order.
+        """
+        for team, rank in enumerate(ranks, start=1):
+            self.tournament["competitors"][team - 1]["rank"] = rank
+
+    def absent(self, team):
+        """A team that is not ready for pairing (Article 2.5 of the General Handling
+        Rules for Swiss Tournaments: a team that has withdrawn or is not present).
+
+        The team keeps its place in the field and its TPN - art. 1.1.3, "once defined,
+        the TPN should not be modified" - it is simply left out of this round-pairing.
+        """
+        self.tournament["competitors"][team - 1]["present"] = False
 
     def points(self, result):
         return GAMESCORE[result]
@@ -202,6 +238,64 @@ def bye(pairs):
         if b == 0:
             return w
     return None
+
+
+# ---------------------------------------------------------------------------
+# Art. 1.1 - the Tournament Pairing Number
+# ---------------------------------------------------------------------------
+
+def test_art_1_1_1_the_tpn_is_the_place_in_the_field_not_a_count_of_the_present():
+    """Art. 1.1.1 - "each team must have a different TPN, from 1 to the number of teams" -
+    and art. 1.1.3 - "once defined, the TPN should not be modified ... unless the Chief
+    Arbiter decides otherwise".
+
+    Five teams, of which team 1 is absent this round. The TPN of team 3 is 3, because the
+    field has five teams and team 3 is the third of them. It is not 2, which is what a
+    running count over the teams that are ready for pairing would make it: art. 1.1.1
+    numbers the teams of the tournament, not the teams of the round, and art. 1.1.3 says
+    the number a team was given does not move when the field thins out.
+
+    Nothing but art. 1.1 is in play here. No round has been paired, so there is no colour
+    history, no score difference and no float to distract - the assertion reads the TPN
+    straight off the competitor structure that the seven articles which consult it (3.4.4,
+    3.5.3, 3.5.4, 3.6.1, 3.6.2, 4.2.3 and 4.3.1) all read.
+    """
+    tournament = event(5, 5)
+    tournament.absent(1)
+    engine = tournament.engine(1)
+    engine.compute_pairing(False)
+    competitors = engine.crosstable.competitors
+    assert competitors[3]["tpn"] == 3
+    assert [competitors[team]["tpn"] for team in range(1, 6)] == [1, 2, 3, 4, 5]
+
+
+def test_art_1_1_3_an_absent_team_does_not_shift_the_colours_of_the_others():
+    """Art. 1.1.1 and 1.1.3, seen through art. 4.3.1 - the TPN an absent team leaves
+    behind is not handed to the team after it.
+
+    Five teams, team 1 absent, so teams 2, 3, 4 and 5 play round 1. Every score is equal,
+    so the bracket in TPN order is 2, 3, 4, 5 and the identifiers of art. 3.6.2 are
+    "2 3 4 5" (the pairs 2-4 and 3-5) and "2 3 5 4" (the pairs 2-5 and 3-4); the
+    lexicographic minimum of art. 3.6.4 is the first, so the pairs are 2-4 and 3-5.
+
+    That is the same pairing whether the TPNs are 2,3,4,5 or the compacted 1,2,3,4 -
+    compaction preserves the order, and art. 3.5 and art. 3.6 read the TPN for its order
+    alone. Only art. 4.3.1 reads it for its VALUE: "if the first-team has an odd TPN, give
+    it the initial-colour; otherwise, give it the opposite colour". So this position
+    isolates art. 1.1 exactly - every other article that consults the TPN is neutralised
+    by giving them an order they agree on, and art. 4.3.1 alone is left to report which
+    numbers the teams actually hold.
+
+    With the initial-colour White (art. 4.1) and no match played, art. 4.2.3 makes the
+    first-team of each pair the smaller TPN. Team 2's TPN is 2, which is even, so it takes
+    the opposite of the initial-colour and plays Black. Team 3's TPN is 3, odd, so it
+    takes the initial-colour and plays White. Compacted to 1 and 2 the parities invert and
+    both colours come out reversed, which is what this asserts against.
+    """
+    tournament = event(5, 5)
+    tournament.absent(1)
+    tournament.tournament["topColor"] = "w"
+    assert tournament.pair(1) == [(4, 2), (3, 5)]
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +630,9 @@ def test_art_3_5_4_the_sets_are_sorted_lexicographically():
     already sorted in the proper order."
 
     The order is the one the engine enumerates the sets in, and art. 3.5.5 takes the first
-    of them that qualifies - so it is the order that decides which set is chosen.
+    of them that qualifies - so it is the order that decides which set is chosen. The sets
+    are yielded one at a time rather than collected, so the order has to be the order they
+    come out in; listing them here is what checks that.
     """
     engine = event(8, 5).engine(2)
     engine.rank = "cid"
@@ -560,9 +656,9 @@ def test_art_3_5_3_a_set_is_sorted_by_descending_score_then_ascending_tpn():
     """
     engine = event(8, 5).engine(2)
     lower = [{"cid": cid, "rnk": cid, "scorelevel": 3 if cid in (2, 6, 8) else 2} for cid in (1, 2, 3, 5, 6, 8)]
-    sets = engine.list_upfloaters(lower, (3, 3, 2))
-    assert [node["cid"] for node in sets[0]] == [2, 6, 1]
-    assert [node["scorelevel"] for node in sets[0]] == [3, 3, 2]
+    first = next(iter(engine.list_upfloaters(lower, (3, 3, 2))))
+    assert [node["cid"] for node in first] == [2, 6, 1]
+    assert [node["scorelevel"] for node in first] == [3, 3, 2]
 
 
 def test_art_2_3_1_c4_minimise_the_number_of_upfloaters():
@@ -712,6 +808,56 @@ def test_art_2_3_7_c10_minimise_the_upfloaters_opponents_that_floated():
     pairs = [(pair["w"], pair["b"]) for bracket in brackets for pair in bracket["pairs"]]
     bracketpairs = sorted(sorted(pair) for pair in pairs if set(pair) <= {1, 2, 3, 4, 5, 6})
     assert bracketpairs == [[1, 4], [2, 6], [3, 5]]
+
+
+def test_art_2_3_4_and_2_3_7_count_both_upfloaters_in_one_pair():
+    """A bracket pair may contain two upfloaters, and both criteria count teams.
+
+    Teams 2 and 3 are below this bracket's score level and both floated in the previous
+    round. Their pair therefore contributes two to [C7]. Each is also the other
+    upfloater's previously-floated opponent, so it contributes two to [C10].
+
+    The edge weights show the ordering inside this candidate bracket. Teams 1 and 4 are
+    residents that did not float. The identifier of art. 3.6.2 prefers 1-4, 2-3, but
+    [C10] comes first and makes the two cross-pairs 1-2, 3-4 better. The outer [C4]
+    search prevents a selected bracket from pairing two of its own upfloaters: dropping
+    that pair would leave a legal round with two fewer. The synthetic bracket is useful
+    here because the edge-quality checker still has to report every criterion correctly.
+    """
+    engine = crosstable_fideteam([], False, False, lasttworounds=False)   # [C7], [C10] apply
+    engine.scorelevel = 2
+    engine.maxpsd = 2
+    engine.BLOB = 5
+    engine.competitors = [
+        None,
+        {"cid": 1, "tpn": 1, "scorelevel": 2, "flt": 0, "cop": "nc"},
+        {"cid": 2, "tpn": 2, "scorelevel": 1, "flt": 1, "cop": "nc"},
+        {"cid": 3, "tpn": 3, "scorelevel": 1, "flt": 2, "cop": "nc"},
+        {"cid": 4, "tpn": 4, "scorelevel": 2, "flt": 0, "cop": "nc"},
+    ]
+
+    def edge(a, b):
+        return {
+            "ca": a,
+            "cb": b,
+            "canmeet": True,
+            "qlevel": -1,
+            "quality": None,
+            "weight": 0,
+        }
+
+    edges = [edge(a, b) for a in range(1, 5) for b in range(a + 1, 5)]
+    engine.update_bracket(2, engine.competitors[1:], edges)
+    by_pair = {(item["ca"], item["cb"]): item for item in edges}
+
+    together = by_pair[(2, 3)]["quality"]
+    assert together["QC5"] == [0, 2]
+    assert together["QC7"] == 2
+    assert together["QC10"] == 2
+    assert (
+        by_pair[(1, 4)]["weight"] + by_pair[(2, 3)]["weight"]
+        > by_pair[(1, 2)]["weight"] + by_pair[(3, 4)]["weight"]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -909,6 +1055,106 @@ def test_art_3_6_2_top_and_bottom_members():
     assert pairs == [[1, 4], [2, 5], [3, 6]]
 
 
+def test_art_3_6_1_a_heterogeneous_bracket_is_read_in_tpn_order():
+    """Art. 3.6.1 - "the team with the smaller TPN is the top member of the pair" - and
+    art. 3.6.2, which builds the identifier of a pairing out of those positions.
+
+    The order the bracket is read in is the TPN order, and only the TPN order. The
+    residents of a heterogeneous bracket do not come first because they are residents:
+    art. 3.6 knows nothing about which team upfloated into the bracket, and an upfloater
+    with a small TPN is a top member ahead of a resident with a large one.
+
+    Ten teams, five rounds. Round 1: 5 v 9 is drawn, and 1, 3, 4 and 6 win their matches.
+    Going into round 2 the scoregroups are {1,3,4,6} on 2 MP, {5,9} on 1 MP and
+    {2,7,8,10} on 0. The 2 MP bracket pairs inside itself; teams 5 and 9 are the whole
+    1 MP scoregroup and have already met, so [C1] (art. 2.1.1) forbids the only pairing
+    the scoregroup has of its own and art. 3.5 brings up the lexicographically first legal
+    set of two upfloaters, {2, 7}. The bracket is therefore residents 5 and 9 with
+    upfloaters 2 and 7, and its only barred pair is 5-9.
+
+    Two pairings remain, and art. 3.6.2 separates them. Read in TPN order the bracket is
+    2, 5, 7, 9, giving the positions 2->1, 5->2, 7->3, 9->4, so
+
+        {2-9, 5-7}   identifier "2 5 9 7"
+        {2-5, 7-9}   identifier "2 7 5 9"
+
+    and "2 5 9 7" is the smaller, so art. 3.6.4 requires 2-9 and 5-7.
+
+    The engine expresses that order as the weight of a minimum weight matching (see
+    crosstable_fideteam.update_bracket): with B = 4 teams, base = B + 1 = 5 and
+    wtop = base**B = 625, a pair weighs 625 * 2**(B - bsn(bottom)) + bsn(bottom) *
+    base**(B - bsn(top)). No team has a colour preference after one match and no team
+    floated in round 1, so [C8], [C9] and [C10] are all zero and the weight is the
+    position alone. In TPN order:
+
+        2-9  625*2**0 + 4*5**3 = 625 + 500 = 1125     2-5  625*2**2 + 2*5**3 = 2750
+        5-7  625*2**1 + 3*5**2 = 1250 +  75 = 1325    7-9  625*2**0 + 4*5**1 =  645
+        {2-9, 5-7} = 2450                             {2-5, 7-9} = 3395
+
+    In the score order the residents come first - 5, 9, 2, 7, giving 5->1, 9->2, 2->3,
+    7->4 - and the same two candidates come out the other way round:
+
+        2-5  625*2**1 + 3*5**3 = 1250 + 375 = 1625    2-9  625*2**1 + 3*5**2 = 1325
+        7-9  625*2**0 + 4*5**2 =  625 + 100 =  725    5-7  625*2**0 + 4*5**3 = 1125
+        {2-5, 7-9} = 2350                             {2-9, 5-7} = 2450
+
+    which is 2-5 and 7-9: the pairing whose identifier "2 7 5 9" art. 3.6.4 rejects.
+
+    Nothing but art. 3.6 is in play. [C4] and [C5] (art. 2.3.1, 2.3.2) fixed the number of
+    upfloaters and their score before this choice is reached, and both candidates pair one
+    upfloater with each resident, so they are equal on both. [C7] and [C10] (art. 2.3.4,
+    2.3.7) count floaters of the previous round and there are none - round 1 paired equal
+    scores throughout. [C8] and [C9] (art. 2.3.5, 2.3.6) count unfulfilled colour
+    preferences and after a single match no team has a type A preference at all.
+    """
+    tournament = event(10, 5)
+    tournament.match(1, 5, 9, ["W", "L"])       # drawn: teams 5 and 9 have met
+    tournament.match(1, 1, 2, ["W", "W"])
+    tournament.match(1, 3, 7, ["W", "W"])
+    tournament.match(1, 4, 8, ["W", "W"])
+    tournament.match(1, 6, 10, ["W", "W"])
+    (engine, brackets) = tournament.brackets(2)
+    level = engine.competitors[5]["scorelevel"]
+    assert upfloaters(brackets, level) == [2, 7]
+    pairs = sorted(sorted(pair) for pair in tournament.pair(2))
+    assert pairs == [[1, 4], [2, 9], [3, 6], [5, 7], [8, 10]]
+
+
+# ---------------------------------------------------------------------------
+# The board order - art. 3.6 of the General Handling Rules
+# ---------------------------------------------------------------------------
+
+def test_the_board_order_runs_on_the_tpn_and_not_on_the_competitor_id():
+    """Article 3.6 of the General Handling Rules for Swiss Tournaments - the order the
+    matches are put on the boards. C.04.7 art. 1.5 names it as one of the three things the
+    pairing score is used for, "sort boards per Article 3.6 of the General Handling
+    Rules", and what breaks a tie of equal scores there is the pairing number - the TPN of
+    C.04.6 art. 1.1.1 - not the competitor id the file happens to carry.
+
+    The two are the same number in an ordinary file, and the -r option of the command line
+    is what tells them apart: it pairs on the initial order of the field (Article 2 of the
+    General Handling Rules) rather than on the ids, and the TPN is then the place of a team
+    in that order. Four teams whose initial order reverses their ids: team 4 has TPN 1,
+    team 3 has TPN 2, team 2 has TPN 3 and team 1 has TPN 4.
+
+    Round 1, so every score is equal and the whole board order rests on this one tie-break
+    - which is what isolates it. Art. 3.6.2 pairs TPN 1 with TPN 3 and TPN 2 with TPN 4,
+    that is teams 4-2 and 3-1, and art. 4.3.1 colours them: the first-team of each pair is
+    the smaller TPN (art. 4.2.3, all the scores being zero), team 4 with the odd TPN 1
+    takes the initial-colour White and team 3 with the even TPN 2 takes Black.
+
+    On the boards, the match holding TPN 1 comes before the match holding TPN 2. Ordering
+    on the competitor ids instead puts the match holding team 1 first, which is the last
+    team of the field.
+    """
+    tournament = event(4, 5)
+    tournament.initial_order([4, 3, 2, 1])
+    engine = tournament.engine(1, rank=True)
+    engine.compute_pairing(False)
+    assert [engine.competitors[team]["tpn"] for team in range(1, 5)] == [4, 3, 2, 1]
+    assert tournament.pair(1, rank=True) == [(4, 2), (1, 3)]
+
+
 # ---------------------------------------------------------------------------
 # Art. 4 - the colour allocation
 # ---------------------------------------------------------------------------
@@ -928,6 +1174,42 @@ def test_art_4_3_1_the_initial_colour_and_the_parity_of_the_tpn():
     assert tournament.pair(1) == [(5, 1), (2, 6), (7, 3), (4, 8)]
 
 
+def test_art_4_1_the_drawn_initial_colour_is_recovered_through_art_4_3_1():
+    """Art. 4.1 - "the initial-colour is determined by drawing of lots before the pairing
+    of the first round" - read back out of a file that does not record the draw.
+
+    The initial-colour is not the colour of the lowest-numbered team of round 1. Art.
+    4.3.1 stands between the two: "if the first-team has an odd TPN, give it the
+    initial-colour; otherwise, give it the opposite colour". Only an ODD TPN shows the
+    drawn colour directly; an even one shows its negation.
+
+    Five teams, and no record 152 in the file. Team 1 takes a pairing-allocated-bye in
+    round 1, so the lowest-numbered MATCH is 2 v 3 - a bye has "no opponent, no colour"
+    (art. 1.4) and cannot carry the initial-colour at all, which is why the engine skips
+    it. That match was played with team 2 as the white team.
+
+    The chain, and nothing else, is in play. Round 1 is the only round, so every team's
+    primary and secondary score is zero and art. 4.2.1 and 4.2.2 cannot fire: art. 4.2.3
+    makes the first-team of the pair the smaller TPN, team 2. No team has played a match,
+    so of art. 4.3 only 4.3.1 can fire. Team 2's TPN is 2, which is even, so team 2 was
+    given the OPPOSITE of the initial-colour - it played White, so the lot fell on Black.
+    """
+    tournament = event(5, 5, topcolor=None)
+    tournament.pab(1, 1)
+    tournament.match(1, 2, 3, ["W", "L"])
+    tournament.match(1, 4, 5, ["W", "L"])
+    assert "topColor" not in tournament.tournament
+    assert tournament.engine(2).topcolor == "b"
+
+    # and the same file with the colours of the match the other way round recovers White:
+    # team 2 having Black is the even TPN taking the opposite of an initial White.
+    mirror = event(5, 5, topcolor=None)
+    mirror.pab(1, 1)
+    mirror.match(1, 3, 2, ["W", "L"])
+    mirror.match(1, 5, 4, ["W", "L"])
+    assert mirror.engine(2).topcolor == "w"
+
+
 def test_art_4_2_the_first_team_is_the_higher_primary_score():
     """Art. 4.2.1 - the first-team is the one with the higher primary score, and the score
     comes before the TPN of art. 4.2.3.
@@ -941,10 +1223,77 @@ def test_art_4_2_the_first_team_is_the_higher_primary_score():
     engine = tournament.engine(2)
     engine.compute_pairing(False)
     (four, two) = (engine.competitors[4], engine.competitors[2])
-    assert four["acc"] > two["acc"]
+    assert four["pts"] > two["pts"]
     assert four["tpn"] > two["tpn"]
     assert engine.first_team(four, two) is True
     assert engine.first_team(two, four) is False
+
+
+def test_art_4_2_1_the_first_team_is_the_standings_score_not_the_pairing_score():
+    """Art. 4.2.1 - "the first-team is the team with the higher primary score" - read
+    against C.04.7 art. 1.5, which defines the OTHER score an accelerated tournament
+    carries: "the pairing score of a participant (used to define scoregroups, sort them
+    internally, and sort boards per Article 3.6 of the General Handling Rules) is the sum
+    of their standings points and their assigned virtual points".
+
+    That sentence enumerates what the pairing score is for, and the colour allocation is
+    not on the list. Art. 4.2.1 asks for the primary score, which is the standings score:
+    the virtual points of an acceleration are not points the team scored.
+
+    The position makes the two disagree. Four teams; C.04.7 art. 1.4.2 gives teams 1 and 2
+    a virtual match win (2 MP) in rounds 1 to 3. Round 1 pairs 1-2 (pairing score 2 each)
+    and 3-4 (0 each); 1 v 2 is drawn and 3 beats 4. Going into round 2:
+
+        team   standings MP   virtual MP   pairing score
+          1         1              2             3
+          2         1              2             3
+          3         2              0             2
+          4         0              0             0
+
+    Teams 1 and 2 are the top scoregroup and have already met, so [C1] (art. 2.1.1) keeps
+    the bracket from pairing inside itself and art. 3.5 brings teams 3 and 4 up. Art.
+    3.6.2 then pairs 1-3 and 2-4 ("1 2 3 4" beats "1 2 4 3"). In the pair 1-3 the pairing
+    score names team 1 (3 > 2) and the standings score names team 3 (2 > 1): the two
+    disagree, which is the whole point of the position.
+
+    Art. 4.3 is then made to depend on that and nothing else. Both teams played round 1,
+    so 4.3.1 cannot fire. Neither has a type A preference after one match (colour
+    difference +1, and "the last two played matches" needs two), so 4.3.2, 4.3.3, 4.3.4
+    and 4.3.7 cannot fire. Both had White in round 1, so their colour differences are
+    equal (+1) and 4.3.5 cannot fire, and their colour sequences never differ, so 4.3.6
+    cannot fire either. Art. 4.3.8 is left: "alternate the colour of the first-team from
+    its last played round". The first-team had White, so the first-team takes Black - and
+    which team that is, is the whole question.
+    """
+    tournament = event(4, 5)
+    tournament.tournament["accelerated"] = {
+        "name": "Acc",
+        "values": [
+            {"matchPoints": decimal.Decimal("2.0"), "gamePoints": decimal.Decimal("2.0"),
+             "firstRound": 1, "lastRound": 3, "firstCompetitor": 1, "lastCompetitor": 2},
+        ],
+    }
+    tournament.match(1, 1, 2, ["W", "L"])       # drawn: one match point each
+    tournament.match(1, 3, 4, ["W", "W"])       # 3 beats 4: two match points
+    engine = tournament.engine(2)
+    roundpairing = engine.compute_pairing(False)
+    (one, three) = (engine.competitors[1], engine.competitors[3])
+    assert (one["pts"], one["acc"]) == (decimal.Decimal("1.0"), decimal.Decimal("3.0"))
+    assert (three["pts"], three["acc"]) == (decimal.Decimal("2.0"), decimal.Decimal("2.0"))
+    assert one["cop"] == "nc" and three["cop"] == "nc"
+    assert one["cod"] == three["cod"] == 1
+
+    # art. 4.2.1 on the standings score: team 3 is the first-team of the pair 1-3
+    assert engine.first_team(three, one) is True
+    assert engine.first_team(one, three) is False
+
+    rules = {
+        (pair["w"], pair["b"]): pair["colorrule"]
+        for bracket in roundpairing
+        for pair in bracket["pairs"]
+    }
+    # art. 4.3.8 - and it is 4.3.8 that decides, so the test proves which rule fired
+    assert rules == {(1, 3): "4.3.8", (2, 4): "4.3.8"}
 
 
 def test_art_4_2_2_the_secondary_score_and_the_rules_that_switch_it_off():
@@ -962,8 +1311,8 @@ def test_art_4_2_2_the_secondary_score_and_the_rules_that_switch_it_off():
     engine.compute_pairing(False)
     (two, three) = (engine.competitors[2], engine.competitors[3])
     assert engine.secondary
-    assert two["acc"] == three["acc"]           # the same match points
-    assert three["acx"] > two["acx"]            # more game points
+    assert two["pts"] == three["pts"]           # the same match points
+    assert three["ptx"] > two["ptx"]            # more game points
     assert engine.first_team(three, two) is True
 
     noscondary = event(4, 5, primary="match")   # FIDE_TEAM_TYPEA_MP: no secondary score
@@ -974,6 +1323,97 @@ def test_art_4_2_2_the_secondary_score_and_the_rules_that_switch_it_off():
     (two, three) = (engine.competitors[2], engine.competitors[3])
     assert not engine.secondary
     assert engine.first_team(two, three) is True    # art. 4.2.3: the smaller TPN
+
+
+def test_art_1_2_the_three_states_of_the_secondary_score():
+    """Art. 1.2.1 and 1.2.2 - the resolver itself, stated as the three states it can
+    return.
+
+    Art. 1.2.1 asks the rules of the competition "whether the other (secondary score) is
+    used for colour allocation", and art. 1.2.2 answers for the rules that do not: stated
+    and used, stated and not used, and unstated. Only the middle one switches art. 4.2.2
+    off, and a boolean that cannot tell the third state from the second switches it off
+    for tournaments whose rules never said so.
+    """
+    # -m fideteam-mp-gp names both scores: the competition stated that the other is used
+    assert resolve_secondary_score(["fideteam", "mp", "gp"], {"primary": "mp"}) == SECONDARY_USED
+    # a record 192 _MP_GP code writes both into the score system
+    assert resolve_secondary_score(["fideteam"], {"primary": "match", "secondary": "game"}) == SECONDARY_USED
+    # a record 192 _MP code writes one score and no other: the other is stated unused
+    assert resolve_secondary_score(["fideteam"], {"primary": "match"}) == SECONDARY_UNUSED
+    # -m fideteam-mp names the primary score only, which states nothing about the other
+    assert resolve_secondary_score(["fideteam", "mp"], {"primary": "mp"}) == SECONDARY_UNSTATED
+    # and a file that names no score at all leaves art. 1.2.2 to answer
+    assert resolve_secondary_score(["fideteam"], {}) == SECONDARY_UNSTATED
+
+
+def test_art_1_2_2_naming_the_primary_score_does_not_switch_the_secondary_off():
+    """Art. 1.2.1 - "the rules of the competition shall state which, between match points
+    and game points, is called primary score, AND WHETHER the other (secondary score) is
+    used for colour allocation" - and art. 1.2.2, which answers when they do not: "the
+    default is to use match points as the primary score and game points for colour
+    allocation".
+
+    The article asks two questions, and answering the first is not answering the second.
+    "-m fideteam-mp" names match points as the primary score on the command line; it says
+    nothing at all about game points, so art. 1.2.2 still supplies the answer and game
+    points are used for the colour allocation of art. 4.2.2.
+
+    That is the opposite case to a record 192 code, which encodes both decisions at once -
+    FIDE_TEAM_TYPEA_MP_GP writes a secondary score and FIDE_TEAM_TYPEA_MP deliberately
+    writes none - so there the absence of a secondary score IS the competition stating
+    that the other score is not used, and art. 4.2.2 must not fire. Both files reach the
+    engine with a primary score and no secondary one, and what tells them apart is which
+    source stated it.
+
+    Two teams equal on match points and unequal on game points. Art. 4.2.1 cannot separate
+    them, so art. 4.2.2 has the pair to itself: the first-team is team 3, with 2.0 game
+    points against team 2's 1.5. Art. 4.2.3 would say team 2, the smaller TPN, so the two
+    articles disagree and the assertion reports which one fired.
+    """
+    tournament = event(4, 5)
+    # -m fideteam-mp, as commonmain builds it: the method list becomes the pairing system,
+    # and the score token in it becomes the primary score.
+    tournament.tournament["pairingSystem"] = ["fideteam", "mp"]
+    tournament.tournament["scoreSystem"]["primary"] = "mp"
+    tournament.match(1, 2, 4, ["W", "D"])       # team 2: 1.5 game points, 2 match points
+    tournament.match(1, 3, 1, ["W", "W"])       # team 3: 2.0 game points, 2 match points
+    engine = tournament.engine(2)
+    engine.compute_pairing(False)
+    (two, three) = (engine.competitors[2], engine.competitors[3])
+    assert engine.secondary
+    assert two["pts"] == three["pts"]           # the same match points: 4.2.1 is silent
+    assert three["ptx"] > two["ptx"]            # more game points
+    assert two["tpn"] < three["tpn"]            # and 4.2.3 would have said the other team
+    assert engine.first_team(three, two) is True
+    assert engine.first_team(two, three) is False
+
+
+def test_art_1_7_the_three_colour_models_and_where_they_are_named():
+    """Art. 1.7 - "Type A colour preferences are used unless the rules of the team
+    competition specify Type B, or no colour preferences at all".
+
+    The model reaches the engine from two places - the pairing system, which both -m and
+    trf2json's record 192 table write into, and the record 192 code itself - and this is
+    the precedence between them. One model answers both of the questions the crosstable
+    asks, so the two cannot come out of different sources and leave a model half-applied.
+    """
+    # a model named in the pairing system wins, whichever spelling it arrived in
+    assert resolve_colour_model(["fideteam", "typeb"], "") == TYPE_B
+    assert resolve_colour_model(["fideteam", "team_typeb"], "") == TYPE_B
+    assert resolve_colour_model(["fideteam", "nocolor"], "") == NO_COLOUR
+    assert resolve_colour_model(["fideteam", "typea"], "") == TYPE_A
+    # and it wins over the code of the file, which is what -m is for
+    assert resolve_colour_model(["fideteam", "typea"], "FIDE_TEAM_TYPEB_MP_GP") == TYPE_A
+    # the code is read when the pairing system names no model, as -m fideteam leaves it
+    assert resolve_colour_model(["fideteam"], "FIDE_TEAM_TYPEB_MP_GP") == TYPE_B
+    assert resolve_colour_model(["fideteam"], "FIDE_TEAM_TYPEA_MP") == TYPE_A
+    # no record 192 code states the third model: there is no TYPEC token to write, so a
+    # code with no TYPE token falls to the art. 1.7 default here, and the record 192
+    # table of trf2json is what maps such a code to "nocolor".
+    assert resolve_colour_model(["fideteam"], "FIDE_TEAM_MP_GP") == TYPE_A
+    # failing both, art. 1.7's own default
+    assert resolve_colour_model(["fideteam"], "") == TYPE_A
 
 
 def test_art_4_3_2_grant_the_only_preference():

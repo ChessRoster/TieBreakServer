@@ -61,7 +61,30 @@ class chessjson:
 
         self.current_id = 0
         self.pid = {}  # Lookup table for id
-        self.reverse = {"W": "L", "D": "D", "L": "W", "Z": "W", "A": "A", "U": "U"}
+        # The result the other side of a game has, for a game record that carries only
+        # one side's result. get_score() and is_vur() reach this whenever a 001 record
+        # names an opponent whose own row never came back to record the same game -- a
+        # player who withdrew, most often.
+        #
+        # The letters are the score system's, not the TRF result column's: TRF-2026 gives
+        # the result column its own codes and trf2json.self.results translates them before
+        # anything is stored, so a TRF "U" (pairing-allocated bye) arrives here as "P" and
+        # a TRF "X" or "?" as "A". Every key of default_score above therefore has to
+        # appear here; a JSON event handed to the engine directly may use any of them,
+        # because the schema calls a side's "result" a string and leaves the vocabulary to
+        # the score system.
+        self.reverse = {
+            "W": "L",   # a win against a loss
+            "D": "D",   # a draw against a draw
+            "L": "W",
+            "F": "Z",   # a forfeit win against the forfeit that gave it
+            "H": "H",   # a half-point bye is half a point unplayed on both sides
+            "Z": "W",
+            "P": "Z",   # a pairing-allocated bye has no opponent; a named one played
+                        # nothing and scores nothing
+            "A": "A",
+            "U": "U",
+        }
 
         if sys.version_info[0] < 3 or sys.version_info[0] == 3 and sys.version_info[1] < 8:
             self.chessjson["status"]["code"] = 500
@@ -336,7 +359,7 @@ class chessjson:
 
 
     def get_score(self, slist, result, color):
-        res = self.recorded_result(result, color, default="Z")
+        res = self.recorded_result(result, color, default=None)
         if res is None:
             # print("get_score" ,  slist, result, color, "Null")
             return Decimal("0.0")
@@ -350,7 +373,7 @@ class chessjson:
     def is_vur(self, result, color):  #
         if result["played"]:
             return False
-        res = self.recorded_result(result, color, default="Z")
+        res = self.recorded_result(result, color, default=None)
         if res is None:
             return True
         # if res == 'W' and result['black'] > 0:  // Full point bye is not vur
@@ -457,5 +480,5 @@ class chessjson:
         res = self.get_result_res(result, color, default)
         other = "black" if color == "white" else "white"
         if res is None and self.get_result_cid(result, "black") > 0 and other in result:
-            return self.reverse.get(self.get_result_res(result, other))
+            return self.reverse.get(self.get_result_res(result, other, default=None))
         return res

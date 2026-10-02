@@ -8,13 +8,13 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 
 if __name__[:7] == "gacrux." or __package__ is not None and __package__ == "gacrux":
-    from gacrux import colourpreference
     from gacrux import chessjson 
+    from gacrux import colourpreference
     from gacrux import rating
     from gacrux.gacruxexeptions import GacruxInputError
 else:
-    import colourpreference
     import chessjson 
+    import colourpreference
     import rating
     from gacruxexeptions import GacruxInputError
 

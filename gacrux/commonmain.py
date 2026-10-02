@@ -11,15 +11,15 @@ import json
 import sys
 
 if __name__[:7] == "gacrux." or __package__ is not None and __package__ == "gacrux":
-    from gacrux.gacruxexeptions import GacruxInputError, GacruxNoLegalPairing
     from gacrux import helpers
     from gacrux.chessjson import chessjson
+    from gacrux.gacruxexeptions import GacruxInputError, GacruxNoLegalPairing
     from gacrux.trf2json import trf2json
     from gacrux.ts2json import ts2json
 else:
-    from gacruxexeptions import GacruxInputError, GacruxNoLegalPairing
     import helpers
     from chessjson import chessjson
+    from gacruxexeptions import GacruxInputError, GacruxNoLegalPairing
     from trf2json import trf2json
     from ts2json import ts2json
 

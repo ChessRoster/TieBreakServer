@@ -17,6 +17,7 @@ import pytest
 
 from gacrux import gacruxexeptions
 from gacrux import trf2json
+from gacrux.pairingfideteam import pairing_fideteam
 
 
 def team_file(*extra):
@@ -107,17 +108,86 @@ def test_record_352_wins_over_a_longer_roster():
 
 
 def test_a_sequence_written_before_the_team_section_is_read_the_same_way():
-    """Where the record sits in the file does not decide whether it is accepted.
-
-    The reader parses the records in its own order, not the file's, and record 352
-    used to be read before either team-section record. The team-only check would then
-    have refused every team file that declares its teams with a record 310 and
-    nothing else, because nothing had yet said the tournament was a team event. The
-    record is parsed after both team-section forms instead.
-    """
+    """Physical record order does not change the parsed tournament."""
     lines = team_file().split("\n")
     first = read("\n".join(lines[:6] + ["352 WB"] + lines[6:])).get_tournament(1)
     last = read(team_file("352 WB")).get_tournament(1)
 
+    assert first == last
     assert first["teamSequence"] == last["teamSequence"] == "WB"
     assert first["teamSize"] == last["teamSize"] == 2
+
+
+@pytest.mark.parametrize("seq", ["BW", "BWWB", "B"])
+def test_record_352_must_lead_with_white(seq):
+    """C.04.6 art. 1.6.1 takes a team's colour from its first board.
+
+    The sequence gives the colours of the team the pairing designates White, so
+    it has to start with W for the two to agree. A file with 352 BW was read
+    with every match colour reversed, and every colour difference with it.
+    """
+    with pytest.raises(gacruxexeptions.GacruxInputError, match="must lead with W"):
+        read(team_file("352 " + seq))
+
+    assert read(team_file("352 WB")).get_status() == 0
+
+
+def test_a_team_event_with_no_results_has_no_board_count_without_record_352():
+    """Record 310 lists a squad, reserves included, so it is not a board count."""
+    tournament = read(team_file()).get_tournament(1)
+
+    assert tournament["teamSize"] == 0
+    assert len(tournament["competitors"]) == 2
+
+
+def test_pairing_round_one_without_record_352_is_refused():
+    """Before round one there are no matches to count the boards from.
+
+    The pairing went ahead with teamSize 0, which gives a pairing-allocated bye no
+    game points. It is now refused and asks for record 352, here with two teams
+    and no bye to give.
+    """
+    tournament = read(team_file()).get_tournament(1)
+
+    with pytest.raises(gacruxexeptions.GacruxInputError, match="record 352"):
+        pairing_fideteam(tournament, 1, {"experimental": [], "verbose": 0})
+
+
+def test_pairing_round_one_with_record_352_goes_ahead():
+    tournament = read(team_file("352 WB")).get_tournament(1)
+
+    engine = pairing_fideteam(tournament, 1, {"experimental": [], "verbose": 0})
+    pairs = [pair for bracket in engine.compute_pairing(False) for pair in bracket["pairs"]]
+    assert len(pairs) == 1
+
+
+def test_a_team_event_with_matches_still_sizes_itself_from_them():
+    """With matches and no record 352, the board count comes from the matches.
+
+    The fixture is nine teams of two boards, seven rounds played, declared in
+    record 310 and with no record 352.
+    """
+    with open("tests/fixtures/fideteam_nocolor.trf", encoding="latin1") as handle:
+        tournament = read(handle.read()).get_tournament(1)
+
+    assert tournament["teamSize"] == 2
+    assert len(tournament["matchList"]) > 0
+
+
+@pytest.mark.parametrize("section", ["310", "013"])
+def test_board_count_is_available_before_reading_the_team_section(section):
+    class Reader(trf2json.trf2json):
+        def parse_trf_team(self, tournament, line):
+            assert tournament["teamTournament"] is True
+            assert tournament["teamSize"] == 2
+            assert tournament["teamSequence"] == "WB"
+            return super().parse_trf_team(tournament, line)
+
+    text = team_file("352 WB")
+    if section == "013":
+        text = "\n".join(line for line in text.splitlines() if not line.startswith("310"))
+        text += "\n013 " + "Alpha".ljust(32) + "    1    2"
+        text += "\n013 " + "Beta".ljust(32) + "    3    4"
+    reader = Reader()
+    reader.parse_file(text, 1)
+    assert reader.get_status() == 0

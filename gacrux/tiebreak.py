@@ -9,11 +9,11 @@ from datetime import datetime
 
 if __name__[:7] == "gacrux." or __package__ is not None and __package__ == "gacrux":
     from gacrux import chessjson 
-    from gacrux import rating
+    from gacrux import rating, helpers
     from gacrux.gacruxexeptions import GacruxInputError
 else:
     import chessjson 
-    import rating
+    import rating, helpers
     from gacruxexeptions import GacruxInputError
 
 
@@ -434,6 +434,7 @@ class tiebreak:
                 if cmps.get(black, {}).get("rating", None) is not None:
                     brating = cmps[black]["rating"]
                 expscore = rating.ComputeExpectedScore(wrating, brating)
+        actually_played = helpers.match_has_played_board(rst, self.cgames) if self.isteam else rst["played"]
         board = rst["board"] if "board" in rst else 0
         if white > 0:
             cmps[white]["rsts"][rnd] = {
@@ -441,6 +442,7 @@ class tiebreak:
                 "rpoints": wrPoints,
                 "res": self.chj.get_result_res(rst, "white"),
                 "color": "w",
+                "actuallyPlayed": actually_played,
                 "played": rst["played"],
                 "vur": wVur,
                 "rated": rst["rated"] if "rated" in rst else (rst["played"] and black > 0),
@@ -457,6 +459,7 @@ class tiebreak:
                 "rpoints": brPoints,
                 "res": self.chj.get_result_res(rst, "black"),
                 "color": "b",
+                "actuallyPlayed": actually_played,
                 "played": rst["played"],
                 "vur": bVur,
                 "rated": rst["rated"] if "rated" in rst else (rst["played"] and white > 0),
@@ -664,7 +667,8 @@ class tiebreak:
                             tbscore[prefix + "lmp"] = rnd
 
                     for comp in complist:
-                        if comp["played"] and comp["opponent"] > 0:
+                        # Cross-forfeited matches count for results, but supply no colour.
+                        if comp.get("actuallyPlayed", comp["played"]) and comp["opponent"] > 0:
                             ocol = ncol = comp["color"]
                             pf = 1 if ocol == "w" else -1
                             self.addtbval(tbscore[prefix + "cod"], rnd, pf)
@@ -883,7 +887,10 @@ class tiebreak:
                 substr = tb["ede"]["functions"][0:swap]
                 pos = swap - (len(substr) - substr.count(func))
                 if func == "C":
-                    weights = [i for i in range(1, self.teamsize + 1)]
+                    # Board Count is the exceptional lower-is-better board criterion.
+                    # The direct-encounter helper ranks larger scores first, so compare
+                    # the negated weighted total here.
+                    weights = [-i for i in range(1, self.teamsize + 1)]
                 elif func == "T":
                     weights = [1 if i == pos else 0 for i in range(self.teamsize )]
                 elif func == "B":
@@ -897,7 +904,9 @@ class tiebreak:
                             tscore += weights[game["board"]-1] * game["points"]
                         rst["tpoints"] = tscore
                 # breakpoint()
-                self.compute_basic_direct_encounter(tb, func, cmps, rounds, subro, loopcount, "tpoints", scorename, scoretype, prefix)
+                changes += self.compute_basic_direct_encounter(
+                    tb, func, cmps, rounds, subro, loopcount, "tpoints", scorename, scoretype, prefix
+                )
 
         
         tb["ede"]["changes"] += changes
@@ -914,7 +923,7 @@ class tiebreak:
         (_, _, _, prefix) = self.get_scoreinfo(tb, True)
         # changes keep track of number of changes in rank, if 0 we have finished
         changes = 0
-        sign = 1 if func == "B" else -1 # sort B in EDEB, EDEBT, EDEBB, EDET, EDEB in ascending order,
+        sign = -1  # Board Count is already negated; all other scores prefer larger values.
         # print("Basic", func, sign, loopcount, [s["cid"] for s in subro])
         rpos = loopcount - tb["ede"]["swap"]  # Report pos
         postfix = "_" + scorename[0] if tb["name"][0:3] == "EDE" else "" # _g or _m for EDE, EDEBT, EDEBB, EDET, EDEB
@@ -1518,10 +1527,21 @@ class tiebreak:
                     val = "pab" if val == "0w" else val
                     if not cmp["rsts"][rnd]["played"]:
                         res = cmp["rsts"][rnd]["res"]
+                        # .get(res, res), not a bare subscript: res is a scoreSystem result
+                        # letter (W, D, L, F, H, Z, P, A, U -- see scoresystem.py's
+                        # default_score, and record 299 can write F/H directly onto a game,
+                        # per TRF-2026's Abnormal Assignment section), and these two tables
+                        # only ever enumerated a subset of it. A letter neither table names
+                        # is already in its final display form, exactly the fallback
+                        # compute_score takes a few lines above for the same "translate a
+                        # result letter, or leave it alone" job (the `trans` dict there).
+                        # Un-enumerated letters used to raise KeyError out of the middle of
+                        # a tie-break computation on an ordinary, valid TRF file -- e.g. any
+                        # tournament recording a half-point bye ("H") directly on a game.
                         if cmp["rsts"][rnd]["opponent"]:
-                            val = {"W": "+", "D": "=", "L": "-", "P": "pab", "A": "=", "U": "-", "Z": "-"}[res]
+                            val = {"W": "+", "D": "=", "L": "-", "P": "pab", "A": "=", "U": "-", "Z": "-"}.get(res, res)
                         else:
-                            val = {"W": "F", "D": "H", "L": "Z", "P": "pab", "A": "=", "U": "-", "Z": "Z"}[res]
+                            val = {"W": "F", "D": "H", "L": "Z", "P": "pab", "A": "=", "U": "-", "Z": "Z"}.get(res, res)
                     tbscore[prefix + "rfp"][rnd] = val
             tbscore[prefix + "rfp"]["val"] = val
         return "rfp"

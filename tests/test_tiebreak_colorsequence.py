@@ -3,7 +3,7 @@
 Regression tests for the colour tie-breaks COD / COP / CSQ.
 
 A competitor who gets the same colour in every game accumulates a colour difference
-outside the range of the colour-preference table tiebreak.compute_score() keeps for
+outside the range of the legacy colour-preference table tiebreak.compute_cop() keeps for
 team tournaments. That must not crash the score preparation. For an individual
 tournament the listed COP is the colour preference of C.04.3 art. 1.7 exactly as the
 pairing engine computes it (colourpreference.color_preference), and the last two tests
@@ -11,7 +11,7 @@ hold the listing to that.
 """
 import pytest
 
-from gacrux import tiebreak
+from gacrux import colourpreference, tiebreak
 from gacrux import trf2json
 
 
@@ -29,10 +29,17 @@ def player_line(startno, name, rating, points, games):
     return line + "  ".join(["%4d %s %s" % game for game in games])
 
 
-def compute(lines, tiebreaks):
+def prepare(lines, pairing_system=None):
     chessfile = trf2json.trf2json()
     chessfile.parse_file("\n".join(lines), True)
     tournament = chessfile.get_tournament(1)
+    if pairing_system is not None:
+        tournament["pairingSystem"] = pairing_system
+    return tournament
+
+
+def compute(lines, tiebreaks):
+    tournament = prepare(lines)
     params = {"tiebreak": tiebreaks, "check": False, "unrated": None}
     tb = tiebreak.tiebreak(tournament, -1, params)
     result = tb.compute_tiebreaks(tournament, params)
@@ -87,7 +94,7 @@ def test_long_colour_sequence_saturates_in_correct_direction(rounds):
     table the listing used to read for everybody and still reads for team tournaments,
     where the clamp it describes is what stops the table inverting.
 
-    That table is a nine-character string built in tiebreak.compute_score():
+    That table is a nine-character string used by the legacy COP listing:
 
         colpref = other[ocol] + "bbbbwwww"
 
@@ -203,4 +210,122 @@ def test_the_listed_colour_preference_is_the_engines(csq):
     cod = csq.count("w") - csq.count("b")
     scores = compute(all_draws_with_player_1_on(csq), ["COD", "COP", "CSQ"])
 
-    assert scores[1] == [cod, crosstable_dutch.color_preference(None, cod, csq), csq]
+    crosstable = crosstable_dutch({}, False, 0)
+    nodes, _ = crosstable.init_engine(prepare(all_draws_with_player_1_on(csq)),
+                                     len(csq) + 1, len(csq), "w", "rnk")
+    assert scores[1] == [cod, nodes[1]["cop"], csq]
+    assert not any(key.endswith("_cop") for cmp in crosstable.cmps.values()
+                   for key in cmp["tbval"])
+
+
+def test_score_preparation_does_not_compute_pairing_preferences(monkeypatch):
+    def unexpected_policy(*args):
+        pytest.fail("generic score preparation called Dutch colour policy")
+
+    monkeypatch.setattr(colourpreference, "color_preference", unexpected_policy)
+    tournament = prepare(all_draws_with_player_1_on("wwwbb"))
+    params = {"tiebreak": ["PTS", "COD", "CSQ"], "check": False}
+    calculator = tiebreak.tiebreak(tournament, -1, params)
+    calculator.compute_tiebreaks(tournament, params)
+    assert not any(key.endswith("_cop") for cmp in calculator.cmps.values()
+                   for key in cmp["tbval"])
+
+
+@pytest.mark.parametrize("system", [["berger"], ["burstein"], ["dobov"], ["custom"], []])
+def test_explicit_non_dutch_cop_retains_legacy_listing(system, monkeypatch):
+    def unexpected_policy(*args):
+        pytest.fail("non-Dutch COP called Dutch colour policy")
+
+    monkeypatch.setattr(colourpreference, "color_preference", unexpected_policy)
+    tournament = prepare(all_draws_with_player_1_on("wwwbb"), system)
+    params = {"tiebreak": ["COP"], "check": False}
+    calculator = tiebreak.tiebreak(tournament, -1, params)
+    result = calculator.compute_tiebreaks(tournament, params)
+    player = next(cmp for cmp in result["competitors"] if cmp["cid"] == 1)
+    assert player["tiebreakScore"] == ["b2"]
+    assert calculator.cmps[1]["tiebreakDetails"][0]["val"] == "b2"
+    assert calculator.cmps[1]["tiebreakDetails"][0]["5"] == "b2"
+
+
+def test_unspecified_system_keeps_default_dutch_cop():
+    tournament = prepare(all_draws_with_player_1_on("wwwbb"))
+    tournament.pop("pairingSystem", None)
+    params = {"tiebreak": ["COP"], "check": False}
+    calculator = tiebreak.tiebreak(tournament, -1, params)
+    result = calculator.compute_tiebreaks(tournament, params)
+    player = next(cmp for cmp in result["competitors"] if cmp["cid"] == 1)
+    assert player["tiebreakScore"] == ["w2"]
+
+
+def test_explicit_cop_ignores_unplayed_games_and_keeps_round_details():
+    from test_colour_preference import eight_players_with_a_forfeit_and_a_bye
+
+    tournament = prepare(eight_players_with_a_forfeit_and_a_bye())
+    params = {"tiebreak": ["COD", "COP", "CSQ"], "check": False}
+    calculator = tiebreak.tiebreak(tournament, 4, params)
+    result = calculator.compute_tiebreaks(tournament, params)
+    players = {cmp["cid"]: cmp for cmp in result["competitors"]}
+    assert players[1]["tiebreakScore"] == [2, "b2", "ww"]
+    assert players[6]["tiebreakScore"] == [-1, "w1", "bwb"]
+    assert calculator.cmps[1]["tiebreakDetails"][1] == {
+        "desc": "COP", "val": "b2", "1": "b1", "4": "b2"}
+
+
+def test_explicit_cop_for_a_player_with_only_byes_is_no_preference():
+    from test_colour_preference import a_player_who_has_not_played_level_with_one_due_white
+
+    tournament = prepare(a_player_who_has_not_played_level_with_one_due_white())
+    params = {"tiebreak": ["COD", "COP", "CSQ"], "check": False}
+    calculator = tiebreak.tiebreak(tournament, 4, params)
+    result = calculator.compute_tiebreaks(tournament, params)
+    player = next(cmp for cmp in result["competitors"] if cmp["cid"] == 1)
+    assert player["tiebreakScore"] == [0, "nc", ""]
+    assert calculator.cmps[1]["tiebreakDetails"][1] == {"desc": "COP", "val": "nc"}
+
+
+@pytest.mark.parametrize("system, expected", [("FIDE_DUTCH", "w2"),
+                                             ("BERGER_ROUNDROBIN", "b2"),
+                                             ("CUSTOM_SWISS", "b2"), (None, "w2")])
+def test_public_cli_cop_respects_file_policy(tmp_path, monkeypatch, system, expected):
+    import json
+    import sys
+    from gacrux.tiebreakchecker import tiebreakchecker
+
+    infile = tmp_path / "history.trf"
+    outfile = tmp_path / "result.json"
+    lines = all_draws_with_player_1_on("wwwbb")
+    if system is not None:
+        lines.append("192 " + system)
+    infile.write_text("\n".join(lines), encoding="latin1")
+    monkeypatch.setattr(sys, "argv", ["tiebreakchecker", "-i", str(infile),
+                       "-o", str(outfile), "-t", "COD", "COP", "CSQ"])
+    tiebreakchecker().common_main()
+    output = json.loads(outfile.read_text())
+    assert output["status"]["code"] == 0
+    players = output["tiebreakResult"]["competitors"]
+    player = next(cmp for cmp in players if cmp["cid"] == 1)
+    assert player["tiebreakScore"] == [1, expected, "wwwbb"]
+
+
+def test_team_listing_does_not_apply_dutch_policy(monkeypatch):
+    from test_pairing_fideteam import event
+
+    def unexpected_policy(*args):
+        pytest.fail("team COP called Dutch colour policy")
+
+    monkeypatch.setattr(colourpreference, "color_preference", unexpected_policy)
+    tournament = event(2, 6, typeb=True, nocolor=True)
+    for rnd in range(1, 6):
+        tournament.match(rnd, 1, 2, ["D", "D"])
+    params = {"tiebreak": ["COP:MP", "COP:GP"], "check": False}
+    calculator = tiebreak.tiebreak(tournament.tournament, 5, params)
+    assert not any(key.endswith("_cop") for cmp in calculator.cmps.values()
+                   for key in cmp["tbval"])
+    result = calculator.compute_tiebreaks(tournament.tournament, params)
+    player = next(cmp for cmp in result["competitors"] if cmp["cid"] == 1)
+    # Legacy listing is a history notation, even when team pairing uses no colours.
+    assert player["tiebreakScore"] == ["b2", "b2"]
+    engine = tournament.engine(6)
+    crosstable = engine.get_crosstable({}, False, 0)
+    nodes, _ = crosstable.init_engine(engine.tournament, 6, 1, "w", "cid")
+    assert nodes[1]["cop"] == "nc"

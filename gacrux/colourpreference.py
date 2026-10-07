@@ -3,8 +3,10 @@
 The colour preference of C.04.3 art. 1.7, for an individual Swiss tournament.
 
 One function, shared by the pairing engine (crosstable_dutch.color_preference, which the
-Dutch pairing reads for every competitor) and the tie-break listing (the COP column of
-tiebreak.compute_score). The two used to have an implementation each and disagreed: a
+Dutch pairing reads for every competitor) and an explicitly requested Dutch COP listing
+(tiebreak.compute_cop). It is a pure Dutch-specific function, not a class or a policy
+for all pairing systems. Generic score preparation only builds COD and CSQ.
+The two used to have an implementation each and disagreed: a
 player on wwwbb was "w2" to the engine and "b2" to the listing. A tie-break listing that
 contradicts the pairing engine about the same player is wrong in one of the two places,
 so there is now one place.

@@ -138,8 +138,8 @@ class crosstable_dutch(crosstable):
 
     The definition, the strengths it returns and the decision about which article wins
     when several fit are in colourpreference.py, which the tie-break listing (the COP
-    column of tiebreak.compute_score) reads too, so that the engine and the listing
-    cannot disagree about the same player. This is the engine's handle on it.
+    column of tiebreak.compute_cop for Dutch tournaments) reads too, so that the engine
+    and the listing cannot disagree about the same player. This is the engine's handle on it.
     """
 
     def color_preference(self, cod, csq):

@@ -11,11 +11,13 @@ import json
 import sys
 
 if __name__[:7] == "gacrux." or __package__ is not None and __package__ == "gacrux":
+    from gacrux.gacruxexeptions import GacruxInputError, GacruxNoLegalPairing
     from gacrux import helpers
     from gacrux.chessjson import chessjson
     from gacrux.trf2json import trf2json
     from gacrux.ts2json import ts2json
 else:
+    from gacruxexeptions import GacruxInputError, GacruxNoLegalPairing
     import helpers
     from chessjson import chessjson
     from trf2json import trf2json
@@ -313,7 +315,7 @@ class commonmain:
 
         if self.tournamentno > 0:
             tournament = self.chessfile.get_tournament(self.tournamentno)
-            methodlist = params["methodlist"] = [item for sublist in [ s.lower().split("-") for s in params.get("method", [""])] for item in sublist]
+            methodlist = params["methodlist"] = [item for sublist in [ s.lower().split("-") for s in params.get("method", [""])] for item in sublist if item]
             if len(methodlist) > 0:
                 tournament["pairingSystem"] = methodlist
             if "pairingSystem" not in tournament:
@@ -330,19 +332,65 @@ class commonmain:
 
             if params.get("number_of_rounds", 0) > 0:
                 tournament["numRounds"] = params["number_of_rounds"]
+                # A command-line round count is an explicit schedule, just like
+                # record 142, so the rules that need to know which round is the
+                # last one may read it.
+                tournament["numRoundsExplicit"] = True
             if "berger" in methodlist:
                 numrounds = ((len(tournament["competitors"]) + 1) // 2 ) * 2 - 1
                 if "double" in methodlist:
                     numrounds = numrounds * 2
                 tournament["numRounds"] = max(tournament["numRounds"], numrounds) 
 
+    def report_fault(self, code, txt):
+        """Record one status for a fault, on both the chess file and the result object.
+
+        common_main returns the chess file's status code, while a caller over HTTP reads
+        the one on the result object. A fault written to only one of them is answered two
+        different ways by the same run, so both are written here.
+        """
+        self.chessfile.put_status(code, txt)
+        self.error(code, txt)
+
     def do_command(self, func, errcode, errtxt):
+        """Run one stage, preserving input diagnostics and reporting engine faults.
+
+        The pairing checker catches GacruxNoLegalPairing during generation and
+        returns zero prescribed pairs (status 2, or status 1 in a two-sided check).
+        Only a sentinel escaping that boundary reaches the fallback status 505 here.
+        GacruxInputError keeps the reader's status and message, or uses 401 if none
+        was recorded. Invariant failures and unexpected exceptions use status 510.
+        Command-line parsing and verbose mode re-raise; interrupts pass through.
+        """
         if self.exit:
             return
         params = self.params
         try:
             func()
-        except:
+        except GacruxNoLegalPairing as fault:
+            if errcode == 500 or params["verbose"] > 0:
+                raise
+            self.report_fault(505, "This round cannot be paired: " + str(fault))
+        except GacruxInputError as fault:
+            if errcode == 500 or params["verbose"] > 0:
+                raise
+            # gacruxexeptions.py: "The reader will normally have recorded a status code
+            # for it as well". Where it has, that status names the malformation more
+            # precisely than the class of the exception can, and it comes with the
+            # reader's own list of what was wrong with the file, so it is preferred.
+            recorded = self.chessfile.chessjson["status"]
+            if recorded["code"] > 0:
+                self.error(recorded["code"], recorded["error"])
+            else:
+                # 401 wherever the malformation is found, and not the stage's own errcode:
+                # GacruxInputError means the file is wrong, and a caller testing for that
+                # should not have to know which stage noticed. See the reasoning in
+                # tests/test_cli_fault_reporting.py.
+                self.report_fault(401, str(fault))
+        except Exception:
+            # Exception, and not a bare except: KeyboardInterrupt and SystemExit are not
+            # "an exception nobody foresaw" in a stage of the run, they are the user or
+            # the interpreter stopping it, and they have to get out.
             if errcode == 500 or params["verbose"] > 0:
                 raise
             if errcode < 500:

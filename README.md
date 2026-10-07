@@ -29,8 +29,15 @@
 - **-a** or **--analyze** - Analyze pairing
 - **-p** or **--pairing** - Do pairing
 - **-m \<method\>** or **--method \<method\>** - `dutch`, `berger`, or
-  `fideteam` (`fideteam-typeb` for type B colour preferences). FIDE team Swiss
-  tournaments are selected automatically from TRF record 192.
+  `fideteam`. C.04.6 art. 1.7 lets the rules of the competition choose one of
+  three colour models, and `-m` names them all: `fideteam` uses the type A
+  colour preferences of art. 1.7.1, `fideteam-typeb` the type B preferences of
+  art. 1.7.2, and `fideteam-nocolor` uses no colour preferences at all. FIDE
+  team Swiss tournaments are selected automatically from TRF record 192, which
+  also names the model: `FIDE_TEAM_TYPEA_*`, `FIDE_TEAM` and `FIDE_TEAM_BAKU`
+  select type A, `FIDE_TEAM_TYPEB_*` type B, and `FIDE_TEAM_MP_GP`,
+  `FIDE_TEAM_GP_MP`, `FIDE_TEAM_MP`, `FIDE_TEAM_GP`, `FIDE_TEAM_MP_GP_BAKU`
+  and `FIDE_TEAM_MP_BAKU` no colour preferences.
 - **-t \<w | b\>** or **--top-color \<w | b\>** - Color on top board")
 - **-u \<list\>** or **--unpaired \<list\>** - list of competiters that shall not be paired for next round
 - **-x \<list\>** or **--experimental \<list\>** - list of kewords, "weighted" - use weighted
@@ -44,6 +51,21 @@ Pair the next round of the tournament
 Check all rounds of the inputfile for correct pairing, output to terminal
 - python pairingchecker.py -i \<infile\> -c -a -p -n \<round\> -dT -x weighted<br>
 Check round \<n\> with weighted algorithm and write detailed pairing
+
+
+### Pairing results
+
+If no complete legal Dutch or FIDE team pairing exists, `pairingResult.pairs` is
+`[]`. Generation (`-p`) reports `status.code` 2 for an empty pairing. A two-sided
+check (`-c` or `-c -a -p`) reports status 1 and retains the declared pairs,
+score brackets, competitors and quality vectors; an empty declared round cannot
+pass an impossible search. Status 0 means success. With `-c -a` or `-c -p`, only
+one side is computed, so the comparison verdict is suppressed.
+
+The search raises `GacruxNoLegalPairing` internally. `pairingchecker.compute_pairing`
+catches it only around generation, leaves the prescribed pairing empty, and lets
+`apply_result` produce the result above. It returns no partial matching or
+substitute byes; the Chief Arbiter decides what to do with the round.
 
 
 ## 🦋 Tiebreakchecker

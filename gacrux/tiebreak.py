@@ -8,12 +8,14 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 
 if __name__[:7] == "gacrux." or __package__ is not None and __package__ == "gacrux":
+    from gacrux import colourpreference
     from gacrux import chessjson 
-    from gacrux import rating
+    from gacrux import rating, helpers
     from gacrux.gacruxexeptions import GacruxInputError
 else:
+    import colourpreference
     import chessjson 
-    import rating
+    import rating, helpers
     from gacruxexeptions import GacruxInputError
 
 
@@ -83,6 +85,10 @@ class tiebreak:
         2 : "2026-03-01",   # Approved by FIDE Council on 02/02/2026
         } 
 
+    # The format TIEBREAK_RULES states its dates in, and the one a tournament's start
+    # date is read in, so that find_tmversion() compares two dates and not two strings.
+    ISO_DATE = "%Y-%m-%d"
+
     # constructor function
     def __init__(self, tournament, currentround, params):
         self.tiebreaklist = {
@@ -102,7 +108,7 @@ class tiebreak:
             "RIP":   {"name": "RIP",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "number of rounds paired (for TPN assignment)"},
             "VUR":   {"name": "VUR",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "Voluntary unplayed rounds"},
             "NUM":   {"name": "NUM",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "Number of played games"},
-            "COP":   {"name": "COP",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "Color preference"},
+            "COP":   {"name": "COP",   "func": self.compute_cop,                         "rev": True , "flag": ""   ,"desc": "Color preference"},
             "COD":   {"name": "COD",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "Color difference"},
             "CSQ":   {"name": "CSQ",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "Color sequence"},
             "RTG":   {"name": "RTG",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "Start rating"},
@@ -173,7 +179,12 @@ class tiebreak:
         if declared_primary is not None:
             self.set_primaryscore(declared_primary)
         self.accelerated = tournament["accelerated"] if "accelerated" in tournament else None
-        self.rating = {"W": Decimal("1.0"), "D": Decimal("0.5"), "L": "Z", "Z": Decimal("0.0"), "A": "Z", "U": "Z"}
+        # Every result a game can carry has to resolve to a number here: get_score
+        # returns a letter it cannot look up, and the caller subtracts it. The
+        # unplayed results all score as Z, which is what A and U already did --
+        # F, H and P are the three record 299 can write that were missing.
+        self.rating = {"W": Decimal("1.0"), "D": Decimal("0.5"), "L": "Z", "Z": Decimal("0.0"),
+                       "A": "Z", "U": "Z", "F": "Z", "H": "Z", "P": "Z"}
 
         if self.isteam:
             self.scoresystem = tournament["scoreSystem"]
@@ -209,13 +220,54 @@ class tiebreak:
         self.unrated = int(params["unrated"]) if params is not None and "unrated" in params and params["unrated"] is not None else None
         self. rulesversion = max(self.TIEBREAK_RULES.keys())
 
+    def get_startdate(self, tm):
+        """The tournament's start date as a date, or None when the file gives no usable one.
+
+        The date is read, not measured. The leading ten characters are parsed as an ISO
+        "YYYY-MM-DD" and whatever follows them is discarded - the field padding of a
+        fixed-width TRF, a time of day, the rest of a timestamp - because none of it
+        changes the day the tournament started. Returning a date rather than the string it
+        was written as is what stops a longer spelling of the same day from choosing a
+        different rule set than the short one.
+
+        None is returned for an absent record, for a JSON null (len() raised TypeError on
+        it) and for anything that is not an ISO date, because a date the engine cannot
+        read is one it must not guess at.
+        """
+        startdate = tm.get("tournamentInfo", {}).get("startDate", None)
+        if not isinstance(startdate, str):
+            return None
+        try:
+            return datetime.strptime(startdate[0:10], self.ISO_DATE).date()
+        except ValueError:
+            return None
+
     def find_tmversion(self, tm):
-        startdate = tm.get("tournamentInfo", {}).get("startDate", "")
-        if len(startdate) != 10:
-            startdate = str(datetime.now())[0:10]
-        if startdate < self.TIEBREAK_RULES[2]:
-            self.rulesversion = 1
-        
+        """Select the tie-break rules that apply to this tournament, by its start date.
+
+        A rule set applies from the day it came into force, so a tournament that started
+        before the 2026 rules did is scored under the previous set. Both sides of the
+        comparison are dates, so no spelling of a date can decide it.
+        """
+        startdate = self.get_startdate(tm)
+        if startdate is None:
+            # No usable start date: the tournament cannot be placed on either side of the
+            # cut-off, so it takes the newest rule set - the rules in force - as a stated
+            # and deterministic fallback.
+            #
+            # It does not fall back on today's date, which is what used to happen. That
+            # was datetime.now(), the local clock, so an undated file scored its
+            # tie-breaks one way before local midnight and another way after it, and two
+            # machines in different time zones disagreed about the same file.
+            #
+            # Refusing an undated file was considered instead and rejected: such files are
+            # ordinary and score correctly, so refusing them would reject working input to
+            # fix a defect they do not have.
+            self.rulesversion = max(self.TIEBREAK_RULES.keys())
+            return
+        cutoff = datetime.strptime(self.TIEBREAK_RULES[2], self.ISO_DATE).date()
+        self.rulesversion = 1 if startdate < cutoff else max(self.TIEBREAK_RULES.keys())
+
     def zero(self, scorename):
         return self.matchscore["Z"] if scorename == "match" else self.gamescore["Z"]
 
@@ -251,8 +303,8 @@ class tiebreak:
         res = self.chj.get_result_res(result, color, default=None)
         if res is None and self.chj.get_result_cid(result, color) > 0:
             ores = {"white": "black", "black": "white"}[color]
-            res = self.chj.reverse[self.chj.get_result_res(result, ores, default=None)]
-        elif res is None:
+            res = self.chj.reverse.get(self.chj.get_result_res(result, ores, default=None))
+        if res is None:
             # print("get_score" ,  slist, result, color, "Null")
             return Decimal("0.0")
         while res in slist:
@@ -268,8 +320,8 @@ class tiebreak:
         res = self.chj.get_result_res(result, color, default=None)
         if res is None and self.chj.get_result_cid(result, color) > 0:
             ores = {"white": "black", "black": "white"}[color]
-            res = self.chj.reverse[self.chj.get_result_res(result, ores, default=None)]
-        elif res is None:
+            res = self.chj.reverse.get(self.chj.get_result_res(result, ores, default=None))
+        if res is None:
             # print("get_score" ,  slist, result, color, "Null")
             return True
         # if res == 'W' and result['black'] > 0:  // Full point bye is not vur
@@ -421,7 +473,7 @@ class tiebreak:
         black = self.chj.get_result_cid(rst, "black")
         if black > 0:
             if "result" not in rst["black"]:
-                err = "No result for black in round " +  str(rst.get("round", 0)) + ", white=" +  str(rst.get("white", 0)) + ", black=" +  str(rst.get("black", 0))
+                err = "No result for black in round " +  str(rst.get("round", 0)) + ", white=" +  str(white) + ", black=" +  str(black)
                 raise GacruxInputError(err)
             bPoints = self.get_score(scoresystem, rst, "black")
             brPoints = self.get_score(self.rating, rst, "black")
@@ -434,6 +486,7 @@ class tiebreak:
                 if cmps.get(black, {}).get("rating", None) is not None:
                     brating = cmps[black]["rating"]
                 expscore = rating.ComputeExpectedScore(wrating, brating)
+        actually_played = helpers.match_has_played_board(rst, self.cgames) if self.isteam else rst["played"]
         board = rst["board"] if "board" in rst else 0
         if white > 0:
             cmps[white]["rsts"][rnd] = {
@@ -441,6 +494,7 @@ class tiebreak:
                 "rpoints": wrPoints,
                 "res": self.chj.get_result_res(rst, "white"),
                 "color": "w",
+                "actuallyPlayed": actually_played,
                 "played": rst["played"],
                 "vur": wVur,
                 "rated": rst["rated"] if "rated" in rst else (rst["played"] and black > 0),
@@ -457,6 +511,7 @@ class tiebreak:
                 "rpoints": brPoints,
                 "res": self.chj.get_result_res(rst, "black"),
                 "color": "b",
+                "actuallyPlayed": actually_played,
                 "played": rst["played"],
                 "vur": bVur,
                 "rated": rst["rated"] if "rated" in rst else (rst["played"] and white > 0),
@@ -544,7 +599,6 @@ class tiebreak:
 
     def compute_score(self, cmps, scorename, pointtype, scoretype, norounds):
         prefix = pointtype + "_"
-        other = {"w": "b", "b": "w", " ": " "}
         pointsfordraw = scoretype["D"] * (self.teamsize if scorename[0] == "g" else 1)
         for startno, cmp in cmps.items():
             tbscore = cmp["tbval"]
@@ -554,7 +608,8 @@ class tiebreak:
             tbscore[prefix + "rnd"] = {"val": cmp["rnd"]}
             tbscore[prefix + "rtg"] = {"val": cmp["rating"]}
             tbscore[prefix + "cnt"] = {"val": 0}  # count number of elements (why)
-            tbscore[prefix + "points"] = {"val": self.zero(scorename)}  # total points
+            # A total starts at numeric zero; an explicit Z result may award points.
+            tbscore[prefix + "points"] = {"val": Decimal(0)}  # total points
             tbscore[prefix + "win"] = {"val": 0}  # number of wins (played and unplayed)
             tbscore[prefix + "won"] = {"val": 0}  # number of won games over the board
             tbscore[prefix + "bpg"] = {"val": 0}  # number of black games played
@@ -563,7 +618,6 @@ class tiebreak:
             tbscore[prefix + "rep"] = {"val": 0}  # number of rounds elected to play (same as GE)
             tbscore[prefix + "rip"] = {"val": 0}  # number of rounds paired (for TPN assignment)
             tbscore[prefix + "vur"] = {"val": 0}  # number of vurs (check algorithm)
-            tbscore[prefix + "cop"] = {"val": "nc"}  # color preference (for pairing)
             tbscore[prefix + "cod"] = {"val": 0}  # color difference (for pairing)
             tbscore[prefix + "csq"] = {"val": ""}  # color sequence (for pairing)
             tbscore[prefix + "num"] = {"val": 0}  # number of games played (for pairing)
@@ -573,8 +627,6 @@ class tiebreak:
             tbscore[prefix + "lg"] = Decimal("0")  # Result of last game
             tbscore[prefix + "bp"] = {}  # Boardpoints
             # cmpr = sorted(cmp, key=lambda p: (p['rank'], p['tbval'][prefix + name]['val'], p['cid']))
-            pcol = " "  # Previous color
-            csq = ""
             for rnd in range(1, norounds + 1):
                 if rnd in cmp["rsts"]:
                     rst = cmp["rsts"][rnd]
@@ -664,28 +716,15 @@ class tiebreak:
                             tbscore[prefix + "lmp"] = rnd
 
                     for comp in complist:
-                        if comp["played"] and comp["opponent"] > 0:
-                            ocol = ncol = comp["color"]
+                        # Cross-forfeited matches count for results, but supply no colour.
+                        if comp.get("actuallyPlayed", comp["played"]) and comp["opponent"] > 0:
+                            ocol = comp["color"]
                             pf = 1 if ocol == "w" else -1
                             self.addtbval(tbscore[prefix + "cod"], rnd, pf)
                             self.addtbval(tbscore[prefix + "cod"], "val", pf)
-                            pf = tbscore[prefix + "cod"]["val"]
-                            colpref = other[ocol] + "bbbbwwww"
-                            # a competitor with the same color in every game reaches |pf| >= len(colpref),
-                            # which is outside the table. Saturate on the last entry in each direction.
-                            ncol = colpref[max(-len(colpref), min(pf, len(colpref) - 1))]
-                            ncol += str(abs(pf)) if ocol != pcol else "2"
-    
-                            csq += ocol
-                            pcol = ocol
                             self.addtbval(tbscore[prefix + "csq"], rnd, ocol)
                             self.addtbval(tbscore[prefix + "csq"], "val", ocol)
     
-                            self.addtbval(tbscore[prefix + "cop"], rnd, ncol)
-                            tbscore[prefix + "cop"]["val"] = ncol
-                            #cpa = "N"
-                            #if pf < -1   osv
-                            #tbscore[prefix + "cop"]["val"] = ncol
                         # points from played games
                         if comp["played"]:
                             self.addtbval(tbscore[prefix + "num"], rnd, comp["opponent"])
@@ -883,7 +922,10 @@ class tiebreak:
                 substr = tb["ede"]["functions"][0:swap]
                 pos = swap - (len(substr) - substr.count(func))
                 if func == "C":
-                    weights = [i for i in range(1, self.teamsize + 1)]
+                    # Board Count is the exceptional lower-is-better board criterion.
+                    # The direct-encounter helper ranks larger scores first, so compare
+                    # the negated weighted total here.
+                    weights = [-i for i in range(1, self.teamsize + 1)]
                 elif func == "T":
                     weights = [1 if i == pos else 0 for i in range(self.teamsize )]
                 elif func == "B":
@@ -897,7 +939,9 @@ class tiebreak:
                             tscore += weights[game["board"]-1] * game["points"]
                         rst["tpoints"] = tscore
                 # breakpoint()
-                self.compute_basic_direct_encounter(tb, func, cmps, rounds, subro, loopcount, "tpoints", scorename, scoretype, prefix)
+                changes += self.compute_basic_direct_encounter(
+                    tb, func, cmps, rounds, subro, loopcount, "tpoints", scorename, scoretype, prefix
+                )
 
         
         tb["ede"]["changes"] += changes
@@ -914,7 +958,7 @@ class tiebreak:
         (_, _, _, prefix) = self.get_scoreinfo(tb, True)
         # changes keep track of number of changes in rank, if 0 we have finished
         changes = 0
-        sign = 1 if func == "B" else -1 # sort B in EDEB, EDEBT, EDEBB, EDET, EDEB in ascending order,
+        sign = -1  # Board Count is already negated; all other scores prefer larger values.
         # print("Basic", func, sign, loopcount, [s["cid"] for s in subro])
         rpos = loopcount - tb["ede"]["swap"]  # Report pos
         postfix = "_" + scorename[0] if tb["name"][0:3] == "EDE" else "" # _g or _m for EDE, EDEBT, EDEBB, EDET, EDEB
@@ -1151,7 +1195,9 @@ class tiebreak:
                             if opponent > 0:  # 16.4.1
                                 score = min(score, cmps[opponent]["tbval"][oprefix + "abh"]["val"])
                             else:             # 16.4.2
-                                score = min(score, opointsfordraw * rounds)
+                                # "number of rounds in the tournament": the scheduled
+                                # rounds, also in standings after an earlier round
+                                score = min(score, opointsfordraw * self.rounds)
                     else:
                         score = Decimal("0")
                     if tb["modifiers"].get("urd", False) and not self.rr:
@@ -1362,7 +1408,9 @@ class tiebreak:
                 and startno >= val["firstCompetitor"]
                 and startno <= val["lastCompetitor"]
             ):
-                acc = val["gamePoints"] if prefix == "points_" else val["matchPoints"]
+                # game points for an individual score and for a team's game-point
+                # score, which ACC/X reaches as gpoints_ when match points are primary
+                acc = val["gamePoints"] if prefix in ("points_", "gpoints_") else val["matchPoints"]
         return acc
 
     # STD: 1.0/ 0.5 /0.0 point system
@@ -1518,10 +1566,21 @@ class tiebreak:
                     val = "pab" if val == "0w" else val
                     if not cmp["rsts"][rnd]["played"]:
                         res = cmp["rsts"][rnd]["res"]
+                        # .get(res, res), not a bare subscript: res is a scoreSystem result
+                        # letter (W, D, L, F, H, Z, P, A, U -- see scoresystem.py's
+                        # default_score, and record 299 can write F/H directly onto a game,
+                        # per TRF-2026's Abnormal Assignment section), and these two tables
+                        # only ever enumerated a subset of it. A letter neither table names
+                        # is already in its final display form, exactly the fallback
+                        # compute_score takes a few lines above for the same "translate a
+                        # result letter, or leave it alone" job (the `trans` dict there).
+                        # Un-enumerated letters used to raise KeyError out of the middle of
+                        # a tie-break computation on an ordinary, valid TRF file -- e.g. any
+                        # tournament recording a half-point bye ("H") directly on a game.
                         if cmp["rsts"][rnd]["opponent"]:
-                            val = {"W": "+", "D": "=", "L": "-", "P": "pab", "A": "=", "U": "-", "Z": "-"}[res]
+                            val = {"W": "+", "D": "=", "L": "-", "P": "pab", "A": "=", "U": "-", "Z": "-"}.get(res, res)
                         else:
-                            val = {"W": "F", "D": "H", "L": "Z", "P": "pab", "A": "=", "U": "-", "Z": "Z"}[res]
+                            val = {"W": "F", "D": "H", "L": "Z", "P": "pab", "A": "=", "U": "-", "Z": "Z"}.get(res, res)
                     tbscore[prefix + "rfp"][rnd] = val
             tbscore[prefix + "rfp"]["val"] = val
         return "rfp"
@@ -1550,6 +1609,39 @@ class tiebreak:
 
     def get_nul(self, tb, cmps, rounds):
         return "nul"
+
+    def compute_cop(self, tb, cmps, rounds):
+        """List colour preference only when COP is explicitly requested.
+
+        Dutch uses the same C.04.3 function as its crosstable. Other systems retain
+        the historical listing notation; in particular, team COP is not the C.04.6
+        pairing decision, which also depends on type, colour use and next round.
+        Pairing obtains its preference from its own crosstable, using COD and CSQ.
+        """
+        (_, _, _, prefix) = self.get_scoreinfo(tb, True)
+        system = self.tournament.get("pairingSystem", ["dutch"])
+        dutch = not self.isteam and "dutch" in system
+        other = {"w": "b", "b": "w", " ": " "}
+        for cmp in cmps.values():
+            tbscore = cmp["tbval"]
+            preference = tbscore[prefix + "cop"] = {"val": "nc"}
+            cod, csq, previous = 0, "", " "
+            for rnd in range(1, rounds + 1):
+                color = tbscore[prefix + "csq"].get(str(rnd), "")
+                if not color:
+                    continue
+                cod += tbscore[prefix + "cod"][str(rnd)]
+                csq += color
+                if dutch:
+                    value = colourpreference.color_preference(cod, csq)
+                else:
+                    colpref = other[color] + "bbbbwwww"
+                    # The legacy table represents colour differences [-4, +4].
+                    value = colpref[max(-4, min(cod, 4))]
+                    value += str(abs(cod)) if color != previous else "2"
+                previous = color
+                preference[str(rnd)] = preference["val"] = value
+        return "cop"
 
     def get_builtin(self, tb, cmps, rounds):
         tbname = tb["name"]

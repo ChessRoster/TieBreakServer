@@ -349,32 +349,14 @@ class commonmain:
         self.error(code, txt)
 
     def do_command(self, func, errcode, errtxt):
-        """Run one stage of common_main and give a failure the status it deserves.
+        """Run one stage, preserving input diagnostics and reporting engine faults.
 
-        Every command-line entry point drives its stages through here, so this mapping is
-        the contract they all report by. gacruxexeptions.py sets out three conditions that
-        are not variations of one another, and each one gets its own outcome:
-
-        GacruxNoLegalPairing -> 505. This round of this tournament has no admissible
-            pairing. That is a state of the tournament and not a defect of the engine: the
-            rules do not guarantee that a field can be paired, and both C.04.3 art. 1.9.3
-            and C.04.6 art. 3.3.3 leave the decision of what to do about it to the arbiter.
-            505 stands beside 504, the other status meaning the round asked for cannot be
-            paired. The exception names which bracket ran out, so its message is carried.
-
-        GacruxInputError -> the status the reader already recorded for the malformation if
-            there is one, and 401 otherwise -- the code trf2json itself records beside the
-            GacruxInputError it raises, so one code carries one meaning wherever the fault
-            is found. The exception carries a message written for the user (which article
-            the file breaks, say), and that message is what is reported.
-
-        GacruxInvariantError, and any exception nobody foresaw -> 510 "Program error",
-            which is precisely what those are: an invariant violation is a bug in the
-            engine, and an unclassified exception may be one.
-
-        Two paths bypass the mapping. errcode 500 is read_command_line, which runs before
-        there is a chess file to record a status on, so it re-raises; and --verbose
-        re-raises everything, so that a developer gets the traceback instead of a code.
+        The pairing checker catches GacruxNoLegalPairing during generation and
+        returns zero prescribed pairs (status 2, or status 1 in a two-sided check).
+        Only a sentinel escaping that boundary reaches the fallback status 505 here.
+        GacruxInputError keeps the reader's status and message, or uses 401 if none
+        was recorded. Invariant failures and unexpected exceptions use status 510.
+        Command-line parsing and verbose mode re-raise; interrupts pass through.
         """
         if self.exit:
             return

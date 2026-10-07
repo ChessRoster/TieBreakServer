@@ -14,6 +14,7 @@ analyzes the declared round and compares it with that empty result.
 """
 import contextlib
 import io
+import json
 import sys
 
 import pytest
@@ -151,8 +152,10 @@ def reported_pairs(checker):
 
 
 def test_pairing_an_impossible_round_returns_no_pairs(tmp_path):
-    checker, _ = run(write(tmp_path, round_robin(declared=3)), ["-p"])
+    checker, output = run(write(tmp_path, round_robin(declared=3)), ["-p"])
     assert status(checker) == 2
+    assert json.loads(output)["status"]["code"] == 2
+    assert json.loads(output)["pairingResult"]["pairs"] == []
     assert checker.chessfile.result["pairs"] == []
     assert reported_pairs(checker) == []
 
@@ -176,6 +179,23 @@ def test_the_empty_pairing_contract_can_be_rendered_as_text(tmp_path, options):
     checker, _ = run(write(tmp_path, round_robin(declared=4)), options + ["-n", "4", "-d", "T"])
     assert status(checker) in (0, 1)
     assert not any(0 in pair for pair in reported_pairs(checker))
+
+
+@pytest.mark.parametrize("options", [["-c"], ["-c", "-a", "-p"]])
+@pytest.mark.parametrize("declared_pairs", [[(1, 4)], []])
+def test_text_check_verdict_rejects_an_impossible_round(tmp_path, monkeypatch, options, declared_pairs):
+    monkeypatch.setitem(SCHEDULE, 4, declared_pairs)
+    checker, output = run(write(tmp_path, round_robin(declared=4)), options + ["-n", "4", "-d", "T"])
+    assert status(checker) == 1
+    assert checker.chessfile.result["check"] is False
+    assert "Check: False" in output
+
+
+@pytest.mark.parametrize("options", [["-c", "-a"], ["-c", "-p"]])
+def test_text_check_verdict_is_suppressed_with_only_one_side(tmp_path, options):
+    checker, output = run(write(tmp_path, round_robin(declared=4)), options + ["-n", "4", "-d", "T"])
+    assert status(checker) == 0
+    assert "Check:" not in output
 
 
 # ---------------------------------------------------------------------------------
@@ -301,8 +321,10 @@ def three_leaders_who_have_met_every_lower_player():
 
 def test_an_incompletable_dutch_round_returns_no_pairs(tmp_path):
     path = write(tmp_path, three_leaders_who_have_met_every_lower_player(), "eight.trf")
-    checker, _ = run(path, ["-p"])
+    checker, output = run(path, ["-p"])
     assert status(checker) == 2
+    assert json.loads(output)["status"]["code"] == 2
+    assert json.loads(output)["pairingResult"]["pairs"] == []
     assert checker.chessfile.result["pairs"] == []
 
 
@@ -327,7 +349,7 @@ def test_no_complete_pairing_never_uses_the_partial_matching_fallback(tmp_path, 
     def fallback(*args):
         pytest.fail("an incomplete matching is not a prescribed round")
 
-    monkeypatch.setattr(pairing_fideteam, "compute_degenerate_pairing", fallback)
+    monkeypatch.setattr(pairing_fideteam, "compute_degenerate_pairing", fallback, raising=False)
     checker, _ = run(write(tmp_path, round_robin(declared=3)), ["-p"])
     assert status(checker) == 2
     assert reported_pairs(checker) == []

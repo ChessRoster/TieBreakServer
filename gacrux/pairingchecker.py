@@ -402,6 +402,9 @@ class pairingchecker(commonmain):
                     eq = self.write_text_diff(lines, rndpairing["current"], rndpairing["pairs"]) and eq
                 lines.append("")
         if self.params["check"] and ((self.dopairing > 0) == (self.doanalysis > 0)):
+            # Empty pair lists can compare equal after an impossible search.
+            # Use the verdict from apply_result, which also requires completeness.
+            eq = result["check"]
             lines.append(f"Check: {eq}")
         f.writelines(line + "\n" for line in lines)
         # if not eq: breakpoint()
@@ -436,7 +439,9 @@ class pairingchecker(commonmain):
             try:
                 pairing = pairingengine.compute_pairing(False, self.dopairing)
             except GacruxNoLegalPairing:
-                # No prescribed round; the declared analysis above still applies.
+                # The search unwinds here, before commonmain's fault handler.
+                # Keep pairing=[] and the declared brackets/quality already computed.
+                # complete=False prevents even an empty declared round from matching.
                 complete = False
             pcompetitors = sorted(
                 #[{key: value for (key, value) in c.items() if key != "opp"} for c in pairingengine.crosstable.crosstable],

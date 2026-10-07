@@ -110,40 +110,6 @@ class pairing_fideteam(pairing):
         # so there is nothing to precompute.
         return [{} for _ in range(self.levels)]
 
-    def compute_degenerate_pairing(self):
-        """Pair the maximum number of teams when no complete pairing exists."""
-        self.checkonly = False
-        self.reportlevel = 0
-        self.crosstable = self.get_crosstable(self.experimental, False, self.verbose)
-        competitors, opponents = self.crosstable.init_engine(
-            self.tournament, self.rnd, self.nummeets, self.topcolor, self.rank
-        )
-        self.competitors = competitors
-        self.opponents = opponents
-        nodes = self.list_nodes(competitors)
-        edges = self.list_edges(opponents)
-
-        graph = nx.Graph()
-        graph.add_weighted_edges_from((edge["ca"], edge["cb"], 0) for edge in edges)
-        matched = sorted(
-            (a, b) if a < b else (b, a)
-            for a, b in nx.min_weight_matching(graph)
-        )
-
-        pairs = []
-        seated = set()
-        for a, b in matched:
-            edge = opponents[a][b]
-            self.update_color(edge)
-            edge["board"] = len(pairs) + 1
-            pairs.append(edge)
-            seated.update((a, b))
-        for node in nodes:
-            cid = node["cid"]
-            if cid != 0 and cid not in seated:
-                pairs.append({"board": len(pairs) + 1, "w": cid, "b": 0})
-        return pairs
-
     """
     can_be_paired - [C3] art. 2.2.1, the completion criterion
 

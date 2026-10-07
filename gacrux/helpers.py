@@ -46,6 +46,25 @@ def deep_update(d, u):
             d[k] = v
     return d
 
+def match_has_played_board(match, games):
+    """Whether this match supplies actual-play history for team pairing.
+
+    Match ``played`` also counts cross-forfeited results for scoring. C.04.6 colour,
+    encounter, bye-priority and float histories instead require an actual game. Older
+    match-only JSON has no board references; only then use its match flag. An explicit
+    empty board list gives no actual-play history.
+    """
+    if not all((match.get(side) or {}).get("cid", 0) > 0 for side in ("white", "black")):
+        return False
+    if "games" not in match:
+        return match.get("played", False)
+    return any(
+        games[game_id].get("played", False)
+        and all((games[game_id].get(side) or {}).get("cid", 0) > 0 for side in ("white", "black"))
+        for game_id in match["games"]
+    )
+
+
 #  Parse
 
 
@@ -182,8 +201,14 @@ def format_pair(c, pcmps, bsn, sno):
     a = c["w"]
     b = c["b"]
     sa = ("    " + str(pcmps[a][sno]))[-4:]
-    sb = (str(pcmps[b][sno]) + "   ")[0:4]
     ba = ("    " + str(bsn[pcmps[a]["cid"]]))[-4:] if pcmps[a]["cid"] in bsn else "  ?"
+    if b not in pcmps:
+        # The pairing-allocated bye: both engines write it as a pair against competitor
+        # 0, the dummy, which is not a competitor and is not in the bracket's own list.
+        # Printed with the opponent's side left blank, the way format_down prints a
+        # downfloater, rather than indexed for a name that is not there.
+        return sa + " - " + "    " + " (" + ba + " - " + "    " + ")"
+    sb = (str(pcmps[b][sno]) + "   ")[0:4]
     bb = ((str(bsn[pcmps[b]["cid"]]) + "    ")[:4]) if pcmps[b]["cid"] in bsn else "  ?"
     return sa + " - " + sb + " (" + ba + " - " + bb + ")"
 

@@ -209,18 +209,11 @@ ACCELERATION = "250 " + "%4s " % "2.0" + "%4s " % "1.0" + "%3d " % 1 + "%3d " % 
 
 
 def test_cli_preserves_acceleration_input_diagnostic(tmp_path):
-    """A file that breaks C.04.7 art. 1.4.4 must be told which article it breaks.
+    """Preserve the input status and C.04.7 art. 1.4.4 diagnostic.
 
-    ``pairing_fideteam.__init__`` refuses an accelerated tournament whose primary score is
-    game points and says why, in a sentence written for the person who wrote the file.
-    That is a ``GacruxInputError`` -- "the tournament handed to the engine is malformed"
-    (gacruxexeptions.py) -- and funnelling it into 510 "Program error" throws the
-    sentence away and accuses the engine of a bug the user committed.
-
-    The input-error band is 4xx, and 401 is the code trf2json already records beside every
-    GacruxInputError it raises, so a caller sees one code for one meaning wherever the
-    malformation is found. The assertion that matters most is the last one: the article
-    number reaches the output the user actually reads.
+    Baku acceleration with game points as the primary score raises GacruxInputError.
+    The CLI must report status 401 and the violated article in both JSON and text,
+    rather than replacing the diagnostic with status 510 "Program error".
     """
     trf = round_robin(declared=3, typeoftournament="FIDE_TEAM_GP_MP", extra=[ACCELERATION])
     path = write(tmp_path, trf)
@@ -235,16 +228,9 @@ def test_cli_preserves_acceleration_input_diagnostic(tmp_path):
 
 
 def test_an_engine_invariant_violation_is_still_a_program_error(tmp_path, monkeypatch):
-    """510 keeps the meaning it has, so that it stays worth reporting.
+    """Invariant failures retain status 510 "Program error".
 
-    ``gacruxexeptions.py``: "GacruxInvariantError means an internal consistency check of
-    the engine failed. This is a bug in the engine." That -- and an exception nobody anticipated at
-    all -- is what 510 "Program error" is for. Splitting the other two conditions out of
-    510 is only worth doing if what is left behind still means what it says, so this pins
-    the third arm of the mapping rather than leaving it to follow by implication.
-
-    The invariant is raised by hand: a genuine one cannot be provoked from a file without
-    a bug to provoke it with, and the point here is the routing, not the invariant.
+    Inject the exception to test CLI routing without requiring an engine defect.
     """
     from gacrux import gacruxexeptions
     from gacrux.pairingfideteam import pairing_fideteam

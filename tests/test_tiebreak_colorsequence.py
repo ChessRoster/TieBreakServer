@@ -314,7 +314,7 @@ def test_team_listing_does_not_apply_dutch_policy(monkeypatch):
         pytest.fail("team COP called Dutch colour policy")
 
     monkeypatch.setattr(colourpreference, "color_preference", unexpected_policy)
-    tournament = event(2, 6, typeb=True, nocolor=True)
+    tournament = event(2, 6, nocolor=True)
     for rnd in range(1, 6):
         tournament.match(rnd, 1, 2, ["D", "D"])
     params = {"tiebreak": ["COP:MP", "COP:GP"], "check": False}

@@ -110,40 +110,6 @@ class pairing_fideteam(pairing):
         # so there is nothing to precompute.
         return [{} for _ in range(self.levels)]
 
-    def compute_degenerate_pairing(self):
-        """Pair the maximum number of teams when no complete pairing exists."""
-        self.checkonly = False
-        self.reportlevel = 0
-        self.crosstable = self.get_crosstable(self.experimental, False, self.verbose)
-        competitors, opponents = self.crosstable.init_engine(
-            self.tournament, self.rnd, self.nummeets, self.topcolor, self.rank
-        )
-        self.competitors = competitors
-        self.opponents = opponents
-        nodes = self.list_nodes(competitors)
-        edges = self.list_edges(opponents)
-
-        graph = nx.Graph()
-        graph.add_weighted_edges_from((edge["ca"], edge["cb"], 0) for edge in edges)
-        matched = sorted(
-            (a, b) if a < b else (b, a)
-            for a, b in nx.min_weight_matching(graph)
-        )
-
-        pairs = []
-        seated = set()
-        for a, b in matched:
-            edge = opponents[a][b]
-            self.update_color(edge)
-            edge["board"] = len(pairs) + 1
-            pairs.append(edge)
-            seated.update((a, b))
-        for node in nodes:
-            cid = node["cid"]
-            if cid != 0 and cid not in seated:
-                pairs.append({"board": len(pairs) + 1, "w": cid, "b": 0})
-        return pairs
-
     """
     can_be_paired - [C3] art. 2.2.1, the completion criterion
 
@@ -228,6 +194,8 @@ class pairing_fideteam(pairing):
                 return (bracket, pablevel, mod_nodes, mod_edges)
         # art. 3.3.3 - if it is impossible to complete a round-pairing, the Chief Arbiter
         # shall decide what to do.
+        if self.checkonly:
+            return (None, -1, nodes, edges)
         raise GacruxNoLegalPairing(
             "no team can be given the pairing-allocated-bye and leave a legal pairing for"
             + " all the other teams (see C.04.6 art. 3.3.3 and art. 3.4.1)"

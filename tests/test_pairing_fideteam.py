@@ -1229,22 +1229,6 @@ def test_art_3_3_3_an_impossible_pairing_is_reported():
         tournament.pair(4)
 
 
-def test_art_3_3_3_checker_fallback_byes_the_unmatched_teams():
-    tournament = event(4, 5)
-    tournament.match(1, 1, 2, ["W", "W"])
-    tournament.match(1, 3, 4, ["W", "W"])
-    tournament.match(2, 1, 3, ["W", "W"])
-    tournament.match(2, 2, 4, ["W", "W"])
-    tournament.match(3, 1, 4, ["W", "W"])
-    tournament.match(3, 2, 3, ["W", "W"])
-
-    pairs = tournament.engine(4).compute_degenerate_pairing()
-
-    assert sorted((pair["w"], pair["b"]) for pair in pairs) == [
-        (1, 0), (2, 0), (3, 0), (4, 0)
-    ]
-
-
 # ---------------------------------------------------------------------------
 # Check mode - the pairing that the tournament file already holds
 # ---------------------------------------------------------------------------

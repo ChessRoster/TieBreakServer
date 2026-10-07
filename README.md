@@ -46,6 +46,21 @@ Check all rounds of the inputfile for correct pairing, output to terminal
 Check round \<n\> with weighted algorithm and write detailed pairing
 
 
+### Pairing results
+
+If no complete legal Dutch or FIDE team pairing exists, `pairingResult.pairs` is
+`[]`. Generation (`-p`) reports `status.code` 2 for an empty pairing. A two-sided
+check (`-c` or `-c -a -p`) reports status 1 and retains the declared pairs,
+score brackets, competitors and quality vectors; an empty declared round cannot
+pass an impossible search. Status 0 means success. With `-c -a` or `-c -p`, only
+one side is computed, so the comparison verdict is suppressed.
+
+The search raises `GacruxNoLegalPairing` internally. `pairingchecker.compute_pairing`
+catches it only around generation, leaves the prescribed pairing empty, and lets
+`apply_result` produce the result above. It returns no partial matching or
+substitute byes; the Chief Arbiter decides what to do with the round.
+
+
 ## 🦋 Tiebreakchecker
 
 ### 👷 Command line parameters

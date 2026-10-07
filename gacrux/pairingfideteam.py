@@ -39,10 +39,12 @@ if __name__[:7] == "gacrux." or __package__ is not None and __package__ == "gacr
     from gacrux.crosstablefideteam import crosstable_fideteam, qdefs, QC6
     from gacrux.gacruxexeptions import GacruxInputError, GacruxInvariantError, GacruxNoLegalPairing
     from gacrux.pairing import pairing
+    from gacrux.helpers import match_has_played_board
 else:
     from crosstablefideteam import crosstable_fideteam, qdefs, QC6
     from gacruxexeptions import GacruxInputError, GacruxInvariantError, GacruxNoLegalPairing
     from pairing import pairing
+    from helpers import match_has_played_board
 
 
 # The three colour models of art. 1.7: "Type A colour preferences are used unless the
@@ -768,14 +770,17 @@ class pairing_fideteam(pairing):
         if tournament.get("topColorExplicit", False) and "topColor" in tournament:
             return tournament["topColor"].lower()
         tpn = self.tpn_of_the_field(tournament)
+        games = {game["id"]: game for game in tournament.get("gameList", [])}
         played = [
             match
             for match in tournament.get("matchList", [])
-            if match.get("round") == 1 and match.get("played", False)
+            if match.get("round") == 1 and match_has_played_board(match, games)
             and self.get_match_cid(match, "white") in tpn
             and self.get_match_cid(match, "black") in tpn
         ]
         if len(played) == 0:
+            # TRF record 152 may be omitted when the highest paired participant
+            # reveals the initial colour, even if that match was not played.
             if "topColor" in tournament:
                 return tournament["topColor"].lower()
             return self.draw_topcolor(defcolor)
@@ -873,7 +878,8 @@ class pairing_fideteam(pairing):
 
         # 4.3.1 when both teams have yet to play a match, if the first-team has an odd
         #       TPN, give it the initial-colour; otherwise, give it the opposite colour.
-        if first["num"].get("val", 0) == 0 and second["num"].get("val", 0) == 0:
+        # Empty colour histories identify teams that have not actually played a match.
+        if not first["csq"].strip() and not second["csq"].strip():
             color = self.topcolor if first["tpn"] % 2 == 1 else other[self.topcolor]
             return give(color, "4.3.1")
 

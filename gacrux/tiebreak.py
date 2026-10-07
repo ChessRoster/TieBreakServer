@@ -9,11 +9,11 @@ from datetime import datetime
 
 if __name__[:7] == "gacrux." or __package__ is not None and __package__ == "gacrux":
     from gacrux import chessjson 
-    from gacrux import rating
+    from gacrux import rating, helpers
     from gacrux.gacruxexeptions import GacruxInputError
 else:
     import chessjson 
-    import rating
+    import rating, helpers
     from gacruxexeptions import GacruxInputError
 
 
@@ -434,6 +434,7 @@ class tiebreak:
                 if cmps.get(black, {}).get("rating", None) is not None:
                     brating = cmps[black]["rating"]
                 expscore = rating.ComputeExpectedScore(wrating, brating)
+        actually_played = helpers.match_has_played_board(rst, self.cgames) if self.isteam else rst["played"]
         board = rst["board"] if "board" in rst else 0
         if white > 0:
             cmps[white]["rsts"][rnd] = {
@@ -441,6 +442,7 @@ class tiebreak:
                 "rpoints": wrPoints,
                 "res": self.chj.get_result_res(rst, "white"),
                 "color": "w",
+                "actuallyPlayed": actually_played,
                 "played": rst["played"],
                 "vur": wVur,
                 "rated": rst["rated"] if "rated" in rst else (rst["played"] and black > 0),
@@ -457,6 +459,7 @@ class tiebreak:
                 "rpoints": brPoints,
                 "res": self.chj.get_result_res(rst, "black"),
                 "color": "b",
+                "actuallyPlayed": actually_played,
                 "played": rst["played"],
                 "vur": bVur,
                 "rated": rst["rated"] if "rated" in rst else (rst["played"] and white > 0),
@@ -664,7 +667,8 @@ class tiebreak:
                             tbscore[prefix + "lmp"] = rnd
 
                     for comp in complist:
-                        if comp["played"] and comp["opponent"] > 0:
+                        # Cross-forfeited matches count for results, but supply no colour.
+                        if comp.get("actuallyPlayed", comp["played"]) and comp["opponent"] > 0:
                             ocol = ncol = comp["color"]
                             pf = 1 if ocol == "w" else -1
                             self.addtbval(tbscore[prefix + "cod"], rnd, pf)

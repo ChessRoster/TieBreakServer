@@ -1,0 +1,118 @@
+012 Generated tournament
+032 FRA
+042 2026/09/25
+052 2026/09/25
+062 16
+072 16
+082 8
+132                                                                                                                                                  
+142 6
+152 W
+172 FRA FIDE
+182 Sharly Chess
+192 FIDE_TEAM_TYPEA_GP
+212 PTS,MPvGP
+352 WB
+362 TW 2.0   TD 1.0   TL 0.0
+
+### SSSS sTTT NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN RRRR FFF IIIIIIIIIII BBBB/BB/BB PPPP RRRR  1111 1 1  2222 2 2  3333 3 3  4444 4 4  5555 5 5  6666 6 6
+001    1      Team001Board1, Test               1871 FID                         3.0    5     4 w -     5 w +     7 w 1     8 b -               8 b 1
+001    2      Team002Board1, Test               1827 FID                         1.5   13     5 b +     7 b -     4 b =     5 b -                    
+001    3      Team003Board1, Test               1784 FID                         3.0    5     6 w -               5 w 0     4 w +     6 b +     4 w 1
+001    4      Team004Board1, Test               1740 FID                         2.5   10     1 b +     8 b -     2 w =     3 b -     5 b +     3 b 0
+001    5      Team005Board1, Test               1696 FID                         2.0   11     2 w -     1 b -     3 b 1     2 w +     4 w -          
+001    6      Team006Board1, Test               1653 FID                         3.0    5     3 b +               8 b 0     7 w +     3 w -     7 w 1
+001    7      Team007Board1, Test               1609 FID                         1.0   11  0000 - U     2 w +     1 b 0     6 b -     8 w -     6 b 0
+001    8      Team008Board1, Test               1565 FID                         4.0    2               4 w +     6 w 1     1 w +     7 b +     1 w 0
+001    9      Team001Board2, Test               1849 FID                         4.5    1    12 b +    13 b +    15 b +    16 w +              16 w =
+001   10      Team002Board2, Test               1805 FID                         1.0   14    13 w -    15 w -    12 w -    13 w +                    
+001   11      Team003Board2, Test               1762 FID                         3.0    5    14 b +              13 b +    12 b -    14 w +    12 b 0
+001   12      Team004Board2, Test               1718 FID                         4.0    2     9 w -    16 w -    10 b +    11 w +    13 w +    11 w 1
+001   13      Team005Board2, Test               1674 FID                         1.0   14    10 b +     9 w -    11 w -    10 b -    12 b -          
+001   14      Team006Board2, Test               1631 FID                         1.0   14    11 w -              16 w -    15 b -    11 b -    15 b 1
+001   15      Team007Board2, Test               1587 FID                         2.0    5  0000 - U    10 b +     9 w -    14 w +    16 b -    14 w 0
+001   16      Team008Board2, Test               1543 FID                         3.5    4              12 b +    14 b +     9 b -    15 w +     9 b =
+
+### SSS NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN FFFFF EEEEEE MMMMMM GGGGGG RRR  PPP1 PPP2
+310   1 Team001                          TEAM0      0   10.0    9.5   1     1    9
+310   2 Team002                          TEAM1      0    4.0    4.5   6     2   10
+310   3 Team003                          TEAM2      0    6.0    6.0   4     3   11
+310   4 Team004                          TEAM3      0    7.0    6.5   3     4   12
+310   5 Team005                          TEAM4      0    4.0    4.0   7     5   13
+310   6 Team006                          TEAM5      0    6.0    6.0   4     6   14
+310   7 Team007                          TEAM6      0    4.0    4.0   7     7   15
+310   8 Team008                          TEAM7      0    7.0    7.5   2     8   16
+
+### T RRR PPP1
+240 Z   1    8
+240 F   2    6
+240 Z   2    3
+240 F   5    1
+240 Z   5    2
+240 F   6    2
+240 H   6    5
+
+### MMMM GGGG RR1 RR2 RR3 RR4 RR5 RR6
+320  1.0  1.0   7
+
+### RRR TT1 TT2 PPP1 PPP2
+300   1   1   4    1    9
+300   1   4   1    4   12
+300   1   5   2    5   13
+300   1   2   5    2   10
+300   1   3   6    3   11
+300   1   6   3    6   14
+300   2   1   5    1    9
+300   2   5   1    5   13
+300   2   7   2    7   15
+300   2   2   7    2   10
+300   2   8   4    8   16
+300   2   4   8    4   12
+300   3   1   7    1    9
+300   3   7   1    7   15
+300   3   8   6    8   16
+300   3   6   8    6   14
+300   3   4   2    4   12
+300   3   2   4    2   10
+300   3   3   5    3   11
+300   3   5   3    5   13
+300   4   8   1    8   16
+300   4   1   8    1    9
+300   4   6   7    6   14
+300   4   7   6    7   15
+300   4   3   4    3   11
+300   4   4   3    4   12
+300   4   5   2    5   13
+300   4   2   5    2   10
+300   5   7   8    7   15
+300   5   8   7    8   16
+300   5   6   3    6   14
+300   5   3   6    3   11
+300   5   5   4    5   13
+300   5   4   5    4   12
+300   6   8   1    8   16
+300   6   1   8    1    9
+300   6   3   4    3   11
+300   6   4   3    4   12
+300   6   6   7    6   14
+300   6   7   6    7   15
+
+### Team pairings
+801  1 TEAM0 10.0  9.5   4 w      12     5 w      12     7 w 1    12     8 b      12                     8 b 1=   12  
+801  2 TEAM1  4.0  4.5   5 b      12     7 b      12     4 b =    12     5 b      12                                  
+801  3 TEAM2  6.0  6.0   6 w      12                     5 w 0    12     4 w      12     6 b      12     4 w 10   12  
+801  4 TEAM3  7.0  6.5   1 b      12     8 b      12     2 w =    12     3 b      12     5 b      12     3 b 01   12  
+801  5 TEAM4  4.0  4.0   2 w      12     1 b      12     3 b 1    12     2 w      12     4 w      12                  
+801  6 TEAM5  6.0  6.0   3 b      12                     8 b 0    12     7 w      12     3 w      12     7 w 11   12  
+801  7 TEAM6  4.0  4.0                   2 w      12     1 b 0    12     6 b      12     8 w      12     6 b 00   12  
+801  8 TEAM7  7.0  7.5                   4 w      12     6 w 1    12     1 w      12     7 b      12     1 w 0=   12  
+
+### Team results
+802  1 TEAM0   10.0    9.5    4 w  1.0      5 w  2.0      7 w  2.0      8 b  1.0    PAB    1.0      8 b  1.5  
+802  2 TEAM1    4.0    4.5    5 b  1.0      7 b  0.0      4 b  0.5      5 b  1.0    PAB    1.0    PAB    1.0  
+802  3 TEAM2    6.0    6.0    6 w  1.0    PAB    1.0      5 w  1.0      4 w  1.0      6 b  2.0      4 w  1.0  
+802  4 TEAM3    7.0    6.5    1 b  1.0      8 b  0.0      2 w  1.5      3 b  1.0      5 b  2.0      3 b  1.0  
+802  5 TEAM4    4.0    4.0    2 w  1.0      1 b  0.0      3 b  1.0      2 w  1.0      4 w  0.0    PAB    1.0  
+802  6 TEAM5    6.0    6.0    3 b  1.0    PAB    1.0      8 b  0.0      7 w  1.0      3 w  0.0      7 w  2.0  
+802  7 TEAM6    4.0    4.0  PAB    1.0      2 w  2.0      1 b  0.0      6 b  1.0      8 w  0.0      6 b  0.0  
+802  8 TEAM7    7.0    7.5  PAB    1.0      4 w  2.0      6 w  2.0      1 w  1.0      7 b  2.0      1 w  0.5  

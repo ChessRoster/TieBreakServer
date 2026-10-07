@@ -46,6 +46,25 @@ def deep_update(d, u):
             d[k] = v
     return d
 
+def match_has_played_board(match, games):
+    """Whether this match supplies actual-play history for team pairing.
+
+    Match ``played`` also counts cross-forfeited results for scoring. C.04.6 colour,
+    encounter, bye-priority and float histories instead require an actual game. Older
+    match-only JSON has no board references; only then use its match flag. An explicit
+    empty board list gives no actual-play history.
+    """
+    if not all((match.get(side) or {}).get("cid", 0) > 0 for side in ("white", "black")):
+        return False
+    if "games" not in match:
+        return match.get("played", False)
+    return any(
+        games[game_id].get("played", False)
+        and all((games[game_id].get(side) or {}).get("cid", 0) > 0 for side in ("white", "black"))
+        for game_id in match["games"]
+    )
+
+
 #  Parse
 
 

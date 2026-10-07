@@ -18,3 +18,14 @@ how an all-forfeit draw should be classified under C.04.6.
 
 `team_0256` remains invalid. Under the same upstream change its declared round 5
 pairing is correctly rejected, so its obsolete expected-failure entry is removed.
+
+PR #10 now separates result-bearing matches from actual board play. The public
+`played` value and standings treatment are retained; C.04.6 colour history,
+initial-colour recovery, encounter history, bye priority and float history use
+actual board play. This fixes every round of the original issue #23 attachment.
+
+In the team feature overlay, `team_0142` and `team_0256` are consequently valid
+again: both pairing and tie-break checks return 0. Only those two verdict fields
+change; their TRF text is unchanged. `team_0172` also passes the pairing check,
+but still fails its declared Board Count standings, so it remains invalid.
+The shared corpus retains the upstream verdicts for branches without this fix.

@@ -313,7 +313,7 @@ class commonmain:
 
         if self.tournamentno > 0:
             tournament = self.chessfile.get_tournament(self.tournamentno)
-            methodlist = params["methodlist"] = [item for sublist in [ s.lower().split("-") for s in params.get("method", [""])] for item in sublist]
+            methodlist = params["methodlist"] = [item for sublist in [ s.lower().split("-") for s in params.get("method", [""])] for item in sublist if item]
             if len(methodlist) > 0:
                 tournament["pairingSystem"] = methodlist
             if "pairingSystem" not in tournament:

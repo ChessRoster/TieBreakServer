@@ -218,3 +218,7 @@ def test_nonstandard_Z_and_one_sided_win_reach_the_standings():
     assert {c["cid"]: c["tiebreakScore"][0] for c in result["competitors"]} == {
         1: decimal.Decimal("6"), 2: decimal.Decimal("2"),
     }
+    # An additive zero must preserve integer score representation in public output.
+    assert {c["cid"]: str(c["tiebreakScore"][0]) for c in result["competitors"]} == {
+        1: "6", 2: "2",
+    }

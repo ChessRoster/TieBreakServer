@@ -235,7 +235,6 @@ def test_art_3_4_only_played_games_count_in_the_colour_history():
     White; without it he is on -1 with a history "bwb", a STRONG preference for White.
 
     The crosstable prefixes the sequence with one space for the round before the first.
-    This is green today; it pins the guard so it cannot be lost.
     """
     engine, _ = pair_round(eight_players_with_a_forfeit_and_a_bye(), 5)
 

@@ -1,62 +1,29 @@
 # -*- coding: utf-8 -*-
-"""
-The colour preference of C.04.3 art. 1.7, for an individual Swiss tournament.
+"""C.04.3 art. 1.7 colour preferences for individual Swiss tournaments.
 
-One function, shared by the pairing engine (crosstable_dutch.color_preference, which the
-Dutch pairing reads for every competitor) and an explicitly requested Dutch COP listing
-(tiebreak.compute_cop). It is a pure Dutch-specific function, not a class or a policy
-for all pairing systems. Generic score preparation only builds COD and CSQ.
-The two used to have an implementation each and disagreed: a
-player on wwwbb was "w2" to the engine and "b2" to the listing. A tie-break listing that
-contradicts the pairing engine about the same player is wrong in one of the two places,
-so there is now one place.
+Shared by crosstable_dutch.color_preference and an explicitly requested Dutch
+COP listing (tiebreak.compute_cop). Generic score preparation builds COD and CSQ;
+other pairing systems use their own colour-preference rules.
 
-The return is the colour, then the strength:
-    "w2" / "b2" - an absolute colour preference, art. 1.7.1
-    "w1" / "b1" - a strong colour preference, art. 1.7.2
-    "w0" / "b0" - a mild colour preference, art. 1.7.3
-    "nc"        - no colour preference, art. 1.7.4
+The result gives the colour and strength:
+    "w2" / "b2" - absolute, art. 1.7.1
+    "w1" / "b1" - strong, art. 1.7.2
+    "w0" / "b0" - mild, art. 1.7.3
+    "nc"        - no preference, art. 1.7.4
 
-The colour difference (cod) is C.04.3 art. 1.6, games played with White minus games played
-with Black; the colour sequence (csq) is the colours of the games played, in order. Only
-played games count in either (C.04.2 art. 3.4), and that is the caller's business: both
-callers build cod and csq from played games with an opponent before asking.
+cod is games played with White minus games played with Black (art. 1.6).
+csq is the played colour sequence. Callers exclude unplayed games and games
+without an opponent, as required by C.04.2 art. 3.4.
 
-The definitions of art. 1.7 are not mutually exclusive and the article does not say which
-one wins when more than one fits. A player who has played Black, Black, White, White has a
-colour difference of zero and had White in the two latest rounds, so
+The definitions in art. 1.7 can overlap. A player with history bbww has zero
+colour difference: art. 1.7.1 gives an absolute preference for Black, while
+art. 1.7.3 gives a mild preference for Black. The strength affects allocation
+under art. 5.2.2, which grants the stronger preference.
 
-    1.7.1  an absolute preference "when a player's colour difference is greater than +1
-           or less than -1, or when a player had the same colour in the two latest rounds
-           they played"
-    1.7.3  a mild preference "when a player's colour difference is zero, the preference
-           being to alternate the colour with respect to the previous game they played"
-
-both apply. They agree on the colour - Black - and disagree on its strength, and the
-strength is what allocates the game: art. 5.2.2 is "grant the stronger colour preference".
-Pair that player, a topscorer so that [C3] does not keep the two apart, against one whose
-sequence is a bye, White, Black, White - colour difference +1, a strong preference for
-Black by art. 1.7.2 - and the two readings of 1.7 hand Black to different players.
-
-This module takes a player's colour preference to be the first definition in art. 1.7
-that fits them, so the Black-Black-White-White player has an absolute preference and
-takes Black.
-
-The article carries the reading itself. It defines the three strengths in a fixed order
-and gives no rule for choosing between them, which leaves the order they are written in as
-the only ranking the text supplies; and art. 1.7.2 reads as though the case art. 1.7.1
-already took is meant to be out of it, since a player with the same colour twice running
-is not a player whose colour is merely leaning one way. Read that way the conflict is a
-drafting accident - art. 1.7.2 would say what it means if it read "A strong colour
-preference occurs when a player does not have an absolute colour preference and their
-colour difference is +1 (preference for Black) or -1 (preference for White)". If the
-Dutch rules are redrafted to rank the definitions the other way, this is the chain to
-change.
-
-The chain below is that order, and it is the order the engine has always used - the art.
-1.7.1 tests come before the art. 1.7.2 ones, which come before art. 1.7.3. C.04.6 has the
-same shape of conflict in its own art. 1.7.2 and the same order settles it, but the team
-strengths differ, so crosstable_fideteam keeps a colour preference of its own.
+This function preserves the engine's precedence: the first matching definition
+in article order wins, so bbww has an absolute preference. The article does not
+explicitly resolve the overlap. C.04.6 has a similar overlap, but its team
+strengths differ and remain in crosstable_fideteam.color_preference.
 """
 
 

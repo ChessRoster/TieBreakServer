@@ -604,7 +604,8 @@ class tiebreak:
             tbscore[prefix + "rnd"] = {"val": cmp["rnd"]}
             tbscore[prefix + "rtg"] = {"val": cmp["rating"]}
             tbscore[prefix + "cnt"] = {"val": 0}  # count number of elements (why)
-            tbscore[prefix + "points"] = {"val": self.zero(scorename)}  # total points
+            # A total starts at numeric zero; an explicit Z result may award points.
+            tbscore[prefix + "points"] = {"val": Decimal("0.0")}  # total points
             tbscore[prefix + "win"] = {"val": 0}  # number of wins (played and unplayed)
             tbscore[prefix + "won"] = {"val": 0}  # number of won games over the board
             tbscore[prefix + "bpg"] = {"val": 0}  # number of black games played

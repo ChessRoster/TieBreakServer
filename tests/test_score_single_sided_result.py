@@ -153,3 +153,68 @@ def test_a_forfeit_win_taken_from_the_other_side_is_not_an_unplayed_round():
     assert chessfile.is_vur(round_two, "white") is False
     # Player 2's own half is recorded, and a forfeit loss is a VUR.
     assert chessfile.is_vur(round_two, "black") is True
+
+
+@pytest.fixture(params=["reader", "tiebreak"])
+def nonstandard_scorer(request):
+    """Both scoring paths must preserve result presence before looking up points."""
+    from gacrux import tiebreak
+
+    reader = trf2json.trf2json()
+    reader.parse_file("\n".join(one_sided_round_two()), True)
+    scores = {letter: decimal.Decimal(value)
+              for letter, value in {"W": "3", "D": "2", "L": "1", "Z": "1"}.items()}
+    if request.param == "reader":
+        return reader, scores
+    params = {"tiebreak": ["PTS"], "check": False, "unrated": None}
+    return tiebreak.tiebreak(reader.get_tournament(1), -1, params), scores
+
+
+@pytest.mark.parametrize("color", ["white", "black"])
+@pytest.mark.parametrize(
+    "recorded, opponent, played, expected",
+    [
+        ("Z", "L", False, "1"),
+        (None, "L", True, "3"),
+        (None, "D", True, "2"),
+        (None, "W", True, "1"),
+        (None, None, False, "0"),
+    ],
+    ids=["explicit-Z", "missing-reverses-L", "missing-reverses-D",
+         "missing-reverses-W", "neither-recorded"],
+)
+def test_nonstandard_scores_distinguish_missing_result_from_Z(
+        nonstandard_scorer, color, recorded, opponent, played, expected):
+    scorer, scores = nonstandard_scorer
+    other = "black" if color == "white" else "white"
+    game = {"white": {"cid": 1}, "black": {"cid": 2}, "played": played}
+    if recorded is not None:
+        game[color]["result"] = recorded
+    if opponent is not None:
+        game[other]["result"] = opponent
+
+    # An explicit Z takes its configured point, even when reversing the opponent
+    # would give W=3. Only an absent result may be reconstructed from the other side.
+    assert scorer.get_score(scores, game, color) == decimal.Decimal(expected)
+    if recorded is None and opponent is None:
+        assert scorer.get_score(scores, game, other) == decimal.Decimal("0")
+
+
+def test_nonstandard_Z_and_one_sided_win_reach_the_standings():
+    from gacrux import tiebreak
+
+    reader = trf2json.trf2json()
+    reader.parse_file("\n".join(one_sided_round_two("-", "0.0")), True)
+    tournament = reader.get_tournament(1)
+    tournament["scoreSystem"]["game"].update(
+        {letter: decimal.Decimal(value)
+         for letter, value in {"W": "3", "D": "2", "L": "1", "Z": "1"}.items()})
+    params = {"tiebreak": ["PTS"], "check": False, "unrated": None}
+    engine = tiebreak.tiebreak(tournament, -1, params)
+    result = engine.compute_tiebreaks(tournament, params)
+
+    # White has a played win and the win reconstructed from Black's forfeit.
+    # Black has a played loss and an explicitly recorded Z, each worth one point.
+    assert {c["cid"]: c["tiebreakScore"][0] for c in result["competitors"]} == {
+        1: decimal.Decimal("6"), 2: decimal.Decimal("2"),
+    }

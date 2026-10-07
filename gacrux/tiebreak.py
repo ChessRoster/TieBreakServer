@@ -8,10 +8,12 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 
 if __name__[:7] == "gacrux." or __package__ is not None and __package__ == "gacrux":
+    from gacrux import colourpreference
     from gacrux import chessjson 
     from gacrux import rating
     from gacrux.gacruxexeptions import GacruxInputError
 else:
+    import colourpreference
     import chessjson 
     import rating
     from gacruxexeptions import GacruxInputError
@@ -102,7 +104,7 @@ class tiebreak:
             "RIP":   {"name": "RIP",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "number of rounds paired (for TPN assignment)"},
             "VUR":   {"name": "VUR",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "Voluntary unplayed rounds"},
             "NUM":   {"name": "NUM",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "Number of played games"},
-            "COP":   {"name": "COP",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "Color preference"},
+            "COP":   {"name": "COP",   "func": self.compute_cop,                         "rev": True , "flag": ""   ,"desc": "Color preference"},
             "COD":   {"name": "COD",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "Color difference"},
             "CSQ":   {"name": "CSQ",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "Color sequence"},
             "RTG":   {"name": "RTG",   "func": self.get_builtin,                         "rev": True , "flag": ""   ,"desc": "Start rating"},
@@ -544,7 +546,6 @@ class tiebreak:
 
     def compute_score(self, cmps, scorename, pointtype, scoretype, norounds):
         prefix = pointtype + "_"
-        other = {"w": "b", "b": "w", " ": " "}
         pointsfordraw = scoretype["D"] * (self.teamsize if scorename[0] == "g" else 1)
         for startno, cmp in cmps.items():
             tbscore = cmp["tbval"]
@@ -563,7 +564,6 @@ class tiebreak:
             tbscore[prefix + "rep"] = {"val": 0}  # number of rounds elected to play (same as GE)
             tbscore[prefix + "rip"] = {"val": 0}  # number of rounds paired (for TPN assignment)
             tbscore[prefix + "vur"] = {"val": 0}  # number of vurs (check algorithm)
-            tbscore[prefix + "cop"] = {"val": "nc"}  # color preference (for pairing)
             tbscore[prefix + "cod"] = {"val": 0}  # color difference (for pairing)
             tbscore[prefix + "csq"] = {"val": ""}  # color sequence (for pairing)
             tbscore[prefix + "num"] = {"val": 0}  # number of games played (for pairing)
@@ -573,8 +573,6 @@ class tiebreak:
             tbscore[prefix + "lg"] = Decimal("0")  # Result of last game
             tbscore[prefix + "bp"] = {}  # Boardpoints
             # cmpr = sorted(cmp, key=lambda p: (p['rank'], p['tbval'][prefix + name]['val'], p['cid']))
-            pcol = " "  # Previous color
-            csq = ""
             for rnd in range(1, norounds + 1):
                 if rnd in cmp["rsts"]:
                     rst = cmp["rsts"][rnd]
@@ -665,27 +663,13 @@ class tiebreak:
 
                     for comp in complist:
                         if comp["played"] and comp["opponent"] > 0:
-                            ocol = ncol = comp["color"]
+                            ocol = comp["color"]
                             pf = 1 if ocol == "w" else -1
                             self.addtbval(tbscore[prefix + "cod"], rnd, pf)
                             self.addtbval(tbscore[prefix + "cod"], "val", pf)
-                            pf = tbscore[prefix + "cod"]["val"]
-                            colpref = other[ocol] + "bbbbwwww"
-                            # a competitor with the same color in every game reaches |pf| >= len(colpref),
-                            # which is outside the table. Saturate on the last entry in each direction.
-                            ncol = colpref[max(-len(colpref), min(pf, len(colpref) - 1))]
-                            ncol += str(abs(pf)) if ocol != pcol else "2"
-    
-                            csq += ocol
-                            pcol = ocol
                             self.addtbval(tbscore[prefix + "csq"], rnd, ocol)
                             self.addtbval(tbscore[prefix + "csq"], "val", ocol)
     
-                            self.addtbval(tbscore[prefix + "cop"], rnd, ncol)
-                            tbscore[prefix + "cop"]["val"] = ncol
-                            #cpa = "N"
-                            #if pf < -1   osv
-                            #tbscore[prefix + "cop"]["val"] = ncol
                         # points from played games
                         if comp["played"]:
                             self.addtbval(tbscore[prefix + "num"], rnd, comp["opponent"])
@@ -1550,6 +1534,39 @@ class tiebreak:
 
     def get_nul(self, tb, cmps, rounds):
         return "nul"
+
+    def compute_cop(self, tb, cmps, rounds):
+        """List colour preference only when COP is explicitly requested.
+
+        Dutch uses the same C.04.3 function as its crosstable. Other systems retain
+        the historical listing notation; in particular, team COP is not the C.04.6
+        pairing decision, which also depends on type, colour use and next round.
+        Pairing obtains its preference from its own crosstable, using COD and CSQ.
+        """
+        (_, _, _, prefix) = self.get_scoreinfo(tb, True)
+        system = self.tournament.get("pairingSystem", ["dutch"])
+        dutch = not self.isteam and "dutch" in system
+        other = {"w": "b", "b": "w", " ": " "}
+        for cmp in cmps.values():
+            tbscore = cmp["tbval"]
+            preference = tbscore[prefix + "cop"] = {"val": "nc"}
+            cod, csq, previous = 0, "", " "
+            for rnd in range(1, rounds + 1):
+                color = tbscore[prefix + "csq"].get(str(rnd), "")
+                if not color:
+                    continue
+                cod += tbscore[prefix + "cod"][str(rnd)]
+                csq += color
+                if dutch:
+                    value = colourpreference.color_preference(cod, csq)
+                else:
+                    colpref = other[color] + "bbbbwwww"
+                    # The legacy table represents colour differences [-4, +4].
+                    value = colpref[max(-4, min(cod, 4))]
+                    value += str(abs(cod)) if color != previous else "2"
+                previous = color
+                preference[str(rnd)] = preference["val"] = value
+        return "cop"
 
     def get_builtin(self, tb, cmps, rounds):
         tbname = tb["name"]

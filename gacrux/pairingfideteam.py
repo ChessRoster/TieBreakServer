@@ -101,14 +101,12 @@ def resolve_scoresystem(pairingsystem, scoresystem):
         allocation".
     """
     scores = [arg for arg in pairingsystem if arg in SCORE_TOKENS]
-    if len(scores) == 0 and scoresystem.get("primary") is not None:
-        # no method token overrides what the file or caller declared: keep the declared
-        # primary score, and the declared secondary usage when there is one. A primary
-        # score stated alone leaves the secondary unstated, so art. 1.2.2 uses the other.
-        primary = "game" if scoresystem["primary"][0] == "g" else "match"
-        scoresystem["primary"] = primary
-        if "secondary" not in scoresystem:
-            scoresystem["secondary"] = "match" if primary == "game" else "game"
+    declared = len(scores) == 0 and scoresystem.get("primary") is not None
+    if declared:
+        # nothing overrides what the file or caller declared, so the score system is left
+        # as it is. A secondary that is absent is unstated and art. 1.2.2 uses it; one
+        # that is None was stated not to be used.
+        return SECONDARY_UNUSED if "secondary" in scoresystem and scoresystem["secondary"] is None else SECONDARY_USED
     else:
         score = scores[0] if len(scores) >= 1 else "mp+gp"  # the default of art. 1.2.2
         scoresystem.update(

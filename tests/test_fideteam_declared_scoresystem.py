@@ -17,25 +17,24 @@ from gacrux.pairingfideteam import (
 from test_pairing_fideteam import event
 
 
+@pytest.mark.parametrize("primary", ["game", "gp", "match", "mp"])
 @pytest.mark.parametrize("pairingsystem", [[], ["fideteam"], ["fideteam", "typea"]])
-def test_declared_game_primary_survives_without_a_score_token(pairingsystem):
-    scoresystem = {"primary": "game"}
+def test_declared_primary_alone_is_left_untouched(pairingsystem, primary):
+    scoresystem = {"primary": primary}
     assert resolve_scoresystem(pairingsystem, scoresystem) == SECONDARY_USED
-    assert scoresystem["primary"] == "game"
-    assert scoresystem["secondary"] == "match"
+    assert scoresystem == {"primary": primary}
 
 
 def test_declared_unused_secondary_survives_without_a_score_token():
     scoresystem = {"primary": "gp", "secondary": None}
     assert resolve_scoresystem(["fideteam"], scoresystem) == SECONDARY_UNUSED
-    assert scoresystem["primary"] == "game"
-    assert scoresystem["secondary"] is None
+    assert scoresystem == {"primary": "gp", "secondary": None}
 
 
 def test_declared_secondary_survives_without_a_score_token():
     scoresystem = {"primary": "match", "secondary": "game"}
     assert resolve_scoresystem(["fideteam"], scoresystem) == SECONDARY_USED
-    assert scoresystem["primary"] == "match"
+    assert scoresystem == {"primary": "match", "secondary": "game"}
 
 
 def test_nothing_declared_falls_back_to_art_1_2_2():

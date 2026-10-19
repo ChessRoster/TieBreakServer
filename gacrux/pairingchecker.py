@@ -405,6 +405,9 @@ class pairingchecker(commonmain):
                     eq = self.write_text_diff(lines, rndpairing["current"], rndpairing["pairs"]) and eq
                 lines.append("")
         if self.params["check"] and ((self.dopairing > 0) == (self.doanalysis > 0)):
+            # Empty pair lists can compare equal after an impossible search.
+            # Use the verdict from apply_result, which also requires completeness.
+            eq = result["check"]
             lines.append(f"Check: {eq}")
         f.writelines(line + "\n" for line in lines)
         # if not eq: breakpoint()

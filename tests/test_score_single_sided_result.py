@@ -153,3 +153,27 @@ def test_a_forfeit_win_taken_from_the_other_side_is_not_an_unplayed_round():
     assert chessfile.is_vur(round_two, "white") is True
     # Player 2's own half is recorded, and a forfeit loss is a VUR.
     assert chessfile.is_vur(round_two, "black") is True
+
+
+def test_nonstandard_Z_and_one_sided_win_reach_the_standings():
+    from gacrux import tiebreak
+
+    reader = trf2json.trf2json()
+    reader.parse_file("\n".join(one_sided_round_two("-", "0.0")), True)
+    tournament = reader.get_tournament(1)
+    tournament["scoreSystem"]["game"].update(
+        {letter: decimal.Decimal(value)
+         for letter, value in {"W": "3", "D": "2", "L": "1", "Z": "1"}.items()})
+    params = {"tiebreak": ["PTS"], "check": False, "unrated": None}
+    engine = tiebreak.tiebreak(tournament, -1, params)
+    result = engine.compute_tiebreaks(tournament, params)
+
+    # White has a played win and the win reconstructed from Black's forfeit.
+    # Black has a played loss and an explicitly recorded Z, each worth one point.
+    assert {c["cid"]: c["tiebreakScore"][0] for c in result["competitors"]} == {
+        1: decimal.Decimal("6"), 2: decimal.Decimal("2"),
+    }
+    # An additive zero must preserve integer score representation in public output.
+    assert {c["cid"]: str(c["tiebreakScore"][0]) for c in result["competitors"]} == {
+        1: "6", 2: "2",
+    }

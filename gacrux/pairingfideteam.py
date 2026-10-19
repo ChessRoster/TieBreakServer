@@ -101,17 +101,23 @@ def resolve_scoresystem(pairingsystem, scoresystem):
         allocation".
     """
     scores = [arg for arg in pairingsystem if arg in SCORE_TOKENS]
-    score = scores[0] if len(scores) >= 1 else "mp+gp"  # the default of art. 1.2.2
-    
-    scoresystem.update(
-        {   "mp+gp": {"primary": "match", "secondary": "game"},
-            "gp+mp": {"primary": "game", "secondary": "match"},
-            "mp": {"primary": "match", "secondary": None},
-            "gp": {"primary": "game", "secondary": None}
-        }[score]
-    )
-    if len(scores) == 2:
-        scoresystem["secondary"] = scores[1]
+    declared = len(scores) == 0 and scoresystem.get("primary") is not None
+    if declared:
+        # nothing overrides what the file or caller declared, so the score system is left
+        # as it is. A secondary that is absent is unstated and art. 1.2.2 uses it; one
+        # that is None was stated not to be used.
+        return SECONDARY_UNUSED if "secondary" in scoresystem and scoresystem["secondary"] is None else SECONDARY_USED
+    else:
+        score = scores[0] if len(scores) >= 1 else "mp+gp"  # the default of art. 1.2.2
+        scoresystem.update(
+            {   "mp+gp": {"primary": "match", "secondary": "game"},
+                "gp+mp": {"primary": "game", "secondary": "match"},
+                "mp": {"primary": "match", "secondary": None},
+                "gp": {"primary": "game", "secondary": None}
+            }[score]
+        )
+        if len(scores) == 2:
+            scoresystem["secondary"] = scores[1]
     secondary_used = "secondary" in scoresystem and scoresystem["secondary"] is not None
     return SECONDARY_USED if secondary_used else SECONDARY_UNUSED
 

@@ -178,6 +178,23 @@ def test_the_empty_pairing_contract_can_be_rendered_as_text(tmp_path, options):
     assert not any(0 in pair for pair in reported_pairs(checker))
 
 
+@pytest.mark.parametrize("options", [["-c"], ["-c", "-a", "-p"]])
+@pytest.mark.parametrize("declared_pairs", [[(1, 4)], []])
+def test_text_check_verdict_rejects_an_impossible_round(tmp_path, monkeypatch, options, declared_pairs):
+    monkeypatch.setitem(SCHEDULE, 4, declared_pairs)
+    checker, output = run(write(tmp_path, round_robin(declared=4)), options + ["-n", "4", "-d", "T"])
+    assert status(checker) == 1
+    assert checker.chessfile.result["check"] is False
+    assert "Check: False" in output
+
+
+@pytest.mark.parametrize("options", [["-c", "-a"], ["-c", "-p"]])
+def test_text_check_verdict_is_suppressed_with_only_one_side(tmp_path, options):
+    checker, output = run(write(tmp_path, round_robin(declared=4)), options + ["-n", "4", "-d", "T"])
+    assert status(checker) == 0
+    assert "Check:" not in output
+
+
 # ---------------------------------------------------------------------------------
 # Fault classes retain distinct status codes
 # ---------------------------------------------------------------------------------

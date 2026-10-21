@@ -46,6 +46,29 @@ def deep_update(d, u):
             d[k] = v
     return d
 
+def match_has_played_board(match, games):
+    """Whether this match supplies actual-play history for team pairing.
+
+    Match ``played`` also counts cross-forfeited results for scoring. This reads
+    C.04.6 art. 1.6.1 (a colour only when the match "was actually played"), art. 4.3.1
+    ("have yet to play a match"), art. 3.4.3 (matches played, for the bye) and art. 1.5
+    (floaters), and C.04.2 art. 3.5 (a match not played does not bar a later pairing), as
+    requiring an actual board. That is a PROPOSED interpretation, not a ruling: the rules
+    do not say it in terms. Older match-only JSON has no board references ("games" is
+    absent); only then use its match flag. An explicit empty board list ("games": [])
+    gives no actual-play history.
+    """
+    if not all((match.get(side) or {}).get("cid", 0) > 0 for side in ("white", "black")):
+        return False
+    if "games" not in match:
+        return match.get("played", False)
+    return any(
+        games[game_id].get("played", False)
+        and all((games[game_id].get(side) or {}).get("cid", 0) > 0 for side in ("white", "black"))
+        for game_id in match["games"]
+    )
+
+
 #  Parse
 
 

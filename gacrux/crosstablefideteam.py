@@ -28,9 +28,9 @@ the prohibited pairings of record 260 - is the one of the base class.
 from enum import Enum
 
 if __name__[:7] == "gacrux." or __package__ is not None and __package__ == "gacrux":
-    from gacrux.crosstable import crosstable
+    from gacrux.crosstable import crosstable, NUM, FLT
 else:
-    from crosstable import crosstable
+    from crosstable import crosstable, NUM, FLT
 
 class qdefs(Enum):
     QC4 = 0
@@ -83,6 +83,23 @@ class crosstable_fideteam(crosstable):
     score, 0 = it played an opponent with the same score, or did not play at all. Art.
     1.5 - a team that received a bye is not a floater.
     """
+
+    def compute_tiebreak(self, tournament, rnd):
+        cmps = super().compute_tiebreak(tournament, rnd)
+        for cmp in cmps.values():
+            # C.04.2 art. 3.5 permits a rematch after an unplayed match;
+            # C.04.6 art. 3.4.3 counts actual matches for bye priority. Standings
+            # retain result-bearing cross-forfeits, so replace only pairing data.
+            encounters = {
+                r: rst["opponent"] for r, rst in cmp["rsts"].items()
+                if r < rnd and rst.get("actuallyPlayed", False) and rst["opponent"] > 0
+            }
+            cmp["tiebreakDetails"][NUM] = dict(encounters, val=len(encounters))
+            previous = cmp["rsts"].get(rnd - 1)
+            if previous is not None and not previous.get("actuallyPlayed", False):
+                # Art. 1.5: an unplayed match did not float either team.
+                cmp["tiebreakDetails"][FLT] = dict(cmp["tiebreakDetails"][FLT], val=0)
+        return cmps
 
     def floatrule(self):
         return "FLTFT"

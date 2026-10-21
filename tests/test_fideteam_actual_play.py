@@ -1,5 +1,8 @@
 """C.04.6 actual-play history, with the six-round reproducer of issue #23 as its fixture.
 
+The fixture is the issue's reproducer with one change: its record 182 (the software identifier of
+the file's writer) is removed. Everything else, including every result, is as attached to the issue.
+
 A match both teams scored, but whose boards were all forfeited, keeps its result for standings and
 direct encounter. These tests pin what it does NOT supply to the pairing: a colour (C.04.6 art.
 1.6.1: a team had a colour in a match only "if the match was actually played"; art. 4.3.1: "when
